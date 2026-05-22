@@ -32,7 +32,7 @@ pub struct CertKeyPair {
 ///
 /// # 範例
 /// ```no_run
-/// use simple_ssl::cert::generate_self_signed;
+/// use ssl4::cert::generate_self_signed;
 /// let pair = generate_self_signed("localhost", &["localhost", "127.0.0.1"]).unwrap();
 /// println!("{}", pair.cert_pem);
 /// ```

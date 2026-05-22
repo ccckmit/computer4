@@ -1,4 +1,4 @@
-# simple_ssl
+# ssl4
 
 一個用 Rust 寫的簡易 SSL/TLS 套件，基於 `rustls` + `tokio-rustls` 實作。
 
@@ -12,7 +12,7 @@
 
 ### 產生憑證
 ```rust
-use simple_ssl::cert::generate_self_signed;
+use ssl4::cert::generate_self_signed;
 
 let pair = generate_self_signed("localhost", &["localhost", "127.0.0.1"])?;
 println!("{}", pair.cert_pem);
@@ -20,7 +20,7 @@ println!("{}", pair.cert_pem);
 
 ### 啟動 TLS 伺服器
 ```rust
-use simple_ssl::{cert::generate_self_signed, server::TlsServer};
+use ssl4::{cert::generate_self_signed, server::TlsServer};
 
 let pair = generate_self_signed("localhost", &["localhost"])?;
 let server = TlsServer::new("0.0.0.0:8443", pair).await?;
@@ -31,7 +31,7 @@ server.run(|mut stream, peer| async move {
 
 ### 建立 TLS 客戶端
 ```rust
-use simple_ssl::client::{TlsClient, VerifyMode};
+use ssl4::client::{TlsClient, VerifyMode};
 
 // 正式環境：使用 Mozilla 根憑證
 let client = TlsClient::new("example.com", VerifyMode::SystemRoots)?;

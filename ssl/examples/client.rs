@@ -1,11 +1,11 @@
 //! 範例：連線至 TLS Echo 伺服器
 //!   cargo run --example client  (需先在另一終端機啟動 server)
 
-use simple_ssl::client::{TlsClient, VerifyMode};
+use ssl4::client::{TlsClient, VerifyMode};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::main]
-async fn main() -> simple_ssl::Result<()> {
+async fn main() -> ssl4::Result<()> {
     println!("🔐 TLS 客戶端啟動");
     println!("⚠️  使用 DangerousNoVerify 模式（跳過憑證驗證，僅限測試）\n");
 
@@ -22,7 +22,7 @@ async fn main() -> simple_ssl::Result<()> {
         }
     };
 
-    let messages = ["你好，TLS 伺服器！", "這是 Rust simple_ssl 套件", "再見！"];
+    let messages = ["你好，TLS 伺服器！", "這是 Rust ssl4 套件", "再見！"];
     let mut buf = vec![0u8; 4096];
 
     for msg in &messages {

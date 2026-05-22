@@ -1,4 +1,4 @@
-/// simple_ssl — 簡易 SSL/TLS 套件
+/// ssl4 — 簡易 SSL/TLS 套件
 ///
 /// 提供三大功能模組：
 ///   - `cert`   : 憑證產生與載入

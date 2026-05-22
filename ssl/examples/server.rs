@@ -1,12 +1,12 @@
 //! 範例：啟動 TLS Echo 伺服器
 //!   cargo run --example server
 
-use simple_ssl::cert::generate_self_signed;
-use simple_ssl::server::TlsServer;
+use ssl4::cert::generate_self_signed;
+use ssl4::server::TlsServer;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[tokio::main]
-async fn main() -> simple_ssl::Result<()> {
+async fn main() -> ssl4::Result<()> {
     println!("🔐 產生自簽名憑證...");
     let pair = generate_self_signed("localhost", &["localhost", "127.0.0.1"])?;
     println!("✅ 憑證產生完成 (CN=localhost)\n");
