@@ -1,0 +1,16 @@
+[package]
+name = "math4rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+statrs = "0.16"
+rand = "0.8"
+plotters = "0.3"
+image = "0.24"
+ndarray = "0.15"
+
+[dev-dependencies]
+
+[features]
+default = []
