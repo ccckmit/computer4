@@ -138,7 +138,7 @@ impl JpegDecoder {
                     let px = bx * 8 + i;
                     let py = by * 8 + j;
                     if px < self.width && py < self.height {
-                        y_data[py * self.width + px] = (idct_block[j][i] as u8).saturating_add(128);
+                        y_data[py * self.width + px] = idct_block[j][i].clamp(0, 255) as u8;
                     }
                 }
             }
@@ -179,8 +179,8 @@ impl JpegDecoder {
                     if px < self.width / 2 && py < self.height / 2 {
                         let idx = py * (self.width / 2) + px;
                         if idx < cb_data.len() {
-                            cb_data[idx] = (cb_idct[j][i] as u8).saturating_add(128);
-                            cr_data[idx] = (cr_idct[j][i] as u8).saturating_add(128);
+                            cb_data[idx] = cb_idct[j][i].clamp(0, 255) as u8;
+                            cr_data[idx] = cr_idct[j][i].clamp(0, 255) as u8;
                         }
                     }
                 }
