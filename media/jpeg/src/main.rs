@@ -116,28 +116,37 @@ fn rgb_to_y_full(rgb: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 fn rgb_to_cbcr_subsampled(rgb: &[u8], width: usize, height: usize) -> (Vec<u8>, Vec<u8>) {
-    let cw = width / 2;
-    let ch = height / 2;
-    let mut cb = Vec::with_capacity(cw * ch);
-    let mut cr = Vec::with_capacity(cw * ch);
+    let mcus_x = (width + 15) / 16;
+    let mcus_y = (height + 15) / 16;
+    let cw = mcus_x * 8;
+    let ch = mcus_y * 8;
+    let mut cb = vec![128u8; cw * ch];
+    let mut cr = vec![128u8; cw * ch];
 
     for y in 0..ch {
         for x in 0..cw {
-            let mut sum_cb = 0i32;
-            let mut sum_cr = 0i32;
-            for dy in 0..2 {
-                for dx in 0..2 {
-                    let px = (y * 2 + dy) * width + (x * 2 + dx);
-                    let r = rgb[px * 3];
-                    let g = rgb[px * 3 + 1];
-                    let b = rgb[px * 3 + 2];
-                    let (_, cbi, cri) = rgb_to_ycbcr(r, g, b);
-                    sum_cb += cbi as i32;
-                    sum_cr += cri as i32;
+            let img_x = x * 2;
+            let img_y = y * 2;
+            if img_x < width && img_y < height {
+                let mut sum_cb = 0i32;
+                let mut sum_cr = 0i32;
+                let mut count = 0;
+                for dy in 0..2 {
+                    for dx in 0..2 {
+                        let px = img_x + dx;
+                        let py = img_y + dy;
+                        if px < width && py < height {
+                            let idx = (py * width + px) * 3;
+                            let (_, cbi, cri) = rgb_to_ycbcr(rgb[idx], rgb[idx + 1], rgb[idx + 2]);
+                            sum_cb += cbi as i32;
+                            sum_cr += cri as i32;
+                            count += 1;
+                        }
+                    }
                 }
+                cb[y * cw + x] = (sum_cb / count) as u8;
+                cr[y * cw + x] = (sum_cr / count) as u8;
             }
-            cb.push((sum_cb / 4) as u8);
-            cr.push((sum_cr / 4) as u8);
         }
     }
 

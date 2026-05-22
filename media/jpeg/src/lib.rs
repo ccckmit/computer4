@@ -400,6 +400,9 @@ impl<'a> BitReader<'a> {
             if self.bit_pos >= 8 {
                 self.bit_pos = 0;
                 self.pos += 1;
+                if self.pos < self.data.len() && self.data[self.pos - 1] == 0xFF && self.data[self.pos] == 0x00 {
+                    self.pos += 1;
+                }
             }
         }
         result

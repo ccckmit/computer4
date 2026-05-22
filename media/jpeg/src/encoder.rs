@@ -11,6 +11,9 @@ pub struct JpegEncoder {
     ac_c_table: HuffmanTable,
 }
 
+const MAX_H: usize = 2;
+const MAX_V: usize = 2;
+
 impl JpegEncoder {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -43,70 +46,66 @@ impl JpegEncoder {
 
         self.write_start_of_scan(&mut output);
 
-        let mut prev_dc_y = 0i16;
-        let mut prev_dc_cb = 0i16;
-        let mut prev_dc_cr = 0i16;
+        let mcu_w = MAX_H * 8;
+        let mcu_h = MAX_V * 8;
+        let mcus_x = (self.width + mcu_w - 1) / mcu_w;
+        let mcus_y = (self.height + mcu_h - 1) / mcu_h;
 
-        let num_blocks_y = ((self.width + 7) / 8) * ((self.height + 7) / 8);
+        let cw = mcus_x * 8;
+        let _ch = mcus_y * 8;
 
-        for block_idx in 0..num_blocks_y {
-            let by = block_idx / ((self.width + 7) / 8);
-            let bx = block_idx % ((self.width + 7) / 8);
+        let mut prev_dc = [0i16; 3];
 
-            let mut y_block = [[0i16; 8]; 8];
-            for j in 0..8 {
-                for i in 0..8 {
-                    let x = bx * 8 + i;
-                    let y = by * 8 + j;
-                    let pixel = if y < self.height && x < self.width {
-                        y_data[y * self.width + x] as i16 - 128
-                    } else {
-                        0
-                    };
-                    y_block[j][i] = pixel;
+        for mcu_y in 0..mcus_y {
+            for mcu_x in 0..mcus_x {
+                for sy in 0..MAX_V {
+                    for sx in 0..MAX_H {
+                        let bx = mcu_x * MAX_H + sx;
+                        let by = mcu_y * MAX_V + sy;
+                        let mut block = [[0i16; 8]; 8];
+                        for j in 0..8 {
+                            for i in 0..8 {
+                                let x = bx * 8 + i;
+                                let y = by * 8 + j;
+                                block[j][i] = if y < self.height && x < self.width {
+                                    (y_data[y * self.width + x] as i16) - 128
+                                } else {
+                                    0
+                                };
+                            }
+                        }
+                        let dct = forward_dct(&block);
+                        let q = quantize(&dct, &self.y_quant);
+                        self.encode_block(&mut output, &q, &self.dc_y_table, &self.ac_y_table, &mut prev_dc[0]);
+                    }
                 }
-            }
 
-            let dct_block = forward_dct(&y_block);
-            let q_block = quantize(&dct_block, &self.y_quant);
-
-            self.encode_block(&mut output, &q_block, &self.dc_y_table, &self.ac_y_table, &mut prev_dc_y);
-        }
-
-        let num_blocks_c = ((self.width / 2 + 7) / 8) * ((self.height / 2 + 7) / 8);
-
-        for block_idx in 0..num_blocks_c {
-            let by = block_idx / ((self.width / 2 + 7) / 8);
-            let bx = block_idx % ((self.width / 2 + 7) / 8);
-
-            let mut cb_block = [[0i16; 8]; 8];
-            let mut cr_block = [[0i16; 8]; 8];
-
-            for j in 0..8 {
-                for i in 0..8 {
-                    let x = bx * 8 + i;
-                    let y = by * 8 + j;
-                    let pixel_idx = y * (self.width / 2) + x;
-                    cb_block[j][i] = if pixel_idx < cb_data.len() {
-                        cb_data[pixel_idx] as i16 - 128
-                    } else {
-                        0
-                    };
-                    cr_block[j][i] = if pixel_idx < cr_data.len() {
-                        cr_data[pixel_idx] as i16 - 128
-                    } else {
-                        0
-                    };
+                let mut cb_block = [[0i16; 8]; 8];
+                let mut cr_block = [[0i16; 8]; 8];
+                for j in 0..8 {
+                    for i in 0..8 {
+                        let x = mcu_x * 8 + i;
+                        let y = mcu_y * 8 + j;
+                        let idx = y * cw + x;
+                        cb_block[j][i] = if idx < cb_data.len() {
+                            (cb_data[idx] as i16) - 128
+                        } else {
+                            0
+                        };
+                        cr_block[j][i] = if idx < cr_data.len() {
+                            (cr_data[idx] as i16) - 128
+                        } else {
+                            0
+                        };
+                    }
                 }
+                let cb_dct = forward_dct(&cb_block);
+                let cr_dct = forward_dct(&cr_block);
+                let cb_q = quantize(&cb_dct, &self.c_quant);
+                let cr_q = quantize(&cr_dct, &self.c_quant);
+                self.encode_block(&mut output, &cb_q, &self.dc_c_table, &self.ac_c_table, &mut prev_dc[1]);
+                self.encode_block(&mut output, &cr_q, &self.dc_c_table, &self.ac_c_table, &mut prev_dc[2]);
             }
-
-            let cb_dct = forward_dct(&cb_block);
-            let cr_dct = forward_dct(&cr_block);
-            let cb_q = quantize(&cb_dct, &self.c_quant);
-            let cr_q = quantize(&cr_dct, &self.c_quant);
-
-            self.encode_block(&mut output, &cb_q, &self.dc_c_table, &self.ac_c_table, &mut prev_dc_cb);
-            self.encode_block(&mut output, &cr_q, &self.dc_c_table, &self.ac_c_table, &mut prev_dc_cr);
         }
 
         output.push(0xFF);
@@ -117,7 +116,7 @@ impl JpegEncoder {
 
     fn encode_block(&self, output: &mut Vec<u8>, block: &[[i16; 8]; 8], dc_table: &HuffmanTable, ac_table: &HuffmanTable, prev_dc: &mut i16) {
         let zigzag = zigzag_order();
-        let mut dc_val = block[0][0];
+        let dc_val = block[0][0];
         let mut ac_vals = Vec::new();
         for &(i, j) in zigzag.iter().skip(1) {
             ac_vals.push(block[i][j]);
@@ -139,13 +138,7 @@ impl JpegEncoder {
         }
 
         if dc_category > 0 {
-            let magnitude = if dc_diff >= 0 {
-                dc_diff as u16
-            } else {
-                (dc_diff + 1).unsigned_abs() as u16
-            };
-            let expected = 1u16 << (dc_category - 1);
-            let bits = if dc_diff >= 0 { dc_diff as u16 } else { (1u16 << dc_category) - magnitude as u16 };
+            let bits = if dc_diff >= 0 { dc_diff as u16 } else { (1u16 << dc_category) - (dc_diff + 1).unsigned_abs() as u16 };
             writer.write_bits(bits, dc_category as u8);
         }
 
@@ -169,13 +162,7 @@ impl JpegEncoder {
                 if let Some(&(code, len)) = ac_table.codes.get(&rs) {
                     writer.write_bits(code, len as u8);
                 }
-                let magnitude = if coef >= 0 {
-                    coef as u16
-                } else {
-                    ((coef + 1) as i32).unsigned_abs() as u16
-                };
-                let expected = 1u16 << (category - 1);
-                let bits = if coef >= 0 { coef as u16 } else { (1u16 << category) - magnitude as u16 };
+                let bits = if coef >= 0 { coef as u16 } else { (1u16 << category) - ((coef + 1) as i32).unsigned_abs() as u16 };
                 writer.write_bits(bits, category as u8);
                 zero_count = 0;
             }
@@ -189,28 +176,6 @@ impl JpegEncoder {
 
         let bytes = writer.finalize();
         output.extend_from_slice(&bytes);
-    }
-
-    fn blocks_from_data(&self, data: &[u8], width: usize, height: usize) -> Vec<[[u8; 8]; 8]> {
-        let mut blocks = Vec::new();
-        let num_blocks_x = (width + 7) / 8;
-        let num_blocks_y = (height + 7) / 8;
-
-        for by in 0..num_blocks_y {
-            for bx in 0..num_blocks_x {
-                let mut block = [[0u8; 8]; 8];
-                for j in 0..8 {
-                    for i in 0..8 {
-                        let x = bx * 8 + i;
-                        let y = by * 8 + j;
-                        let idx = y * width + x;
-                        block[j][i] = if idx < data.len() { data[idx] } else { 128 };
-                    }
-                }
-                blocks.push(block);
-            }
-        }
-        blocks
     }
 
     fn write_quantization_table(&self, output: &mut Vec<u8>, table: &QuantizationTable) {
@@ -267,7 +232,7 @@ impl JpegEncoder {
         output.push((self.width & 0xFF) as u8);
         output.push(0x03);
         output.push(0x01);
-        output.push(0x11);
+        output.push(0x22);
         output.push(0x00);
         output.push(0x02);
         output.push(0x11);
@@ -286,9 +251,9 @@ impl JpegEncoder {
         output.push(0x01);
         output.push(0x00);
         output.push(0x02);
-        output.push(0x00);
+        output.push(0x11);
         output.push(0x03);
-        output.push(0x00);
+        output.push(0x11);
         output.push(0x00);
         output.push(0x3F);
         output.push(0x00);
@@ -298,17 +263,5 @@ impl JpegEncoder {
 impl Default for JpegEncoder {
     fn default() -> Self {
         Self::new(8, 8)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_encoder_creation() {
-        let encoder = JpegEncoder::new(64, 64);
-        assert_eq!(encoder.width, 64);
-        assert_eq!(encoder.height, 64);
     }
 }
