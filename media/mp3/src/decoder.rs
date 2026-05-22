@@ -201,23 +201,23 @@ if i + 1 >= 576 { break; }
 let tbl_id = if i < r0_end { g.table_select[0] }
 else if i < r1_end { g.table_select[1] }
 else { g.table_select[2] };
-
-if let Some(tbl) = get_table(tbl_id) {
+// Use table 1 as a fallback if the requested ID is not present in our limited table set
+let tbl = get_table(tbl_id).or_else(|| get_table(1)).expect("fallback Huffman table missing");
 if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
-is[i] = x;
-is[i + 1] = y;
+    is[i] = x;
+    is[i + 1] = y;
 }
-}
+
 }
 
 // Count1 region (quads: v,w,x,y each 1 bit)
 let mut i = big_values * 2;
                 while i < 572 && main_reader.bits_remaining() > 0 {
                     let count1_tbl = if g.count1table_select == 1 { 32 } else { 33 };
-                    if let Some(tbl) = get_table(count1_tbl) {
-                        if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
-                            if i + 1 < 576 { is[i] = x; is[i + 1] = y; }
-                        }
+                    // Table 32 is always present; use it as fallback for ID 33
+                    let tbl = get_table(count1_tbl).or_else(|| get_table(32)).expect("fallback count1 table missing");
+                    if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
+                        if i + 1 < 576 { is[i] = x; is[i + 1] = y; }
                     }
                     i += 2;
                 }

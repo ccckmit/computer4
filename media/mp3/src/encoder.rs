@@ -90,24 +90,32 @@ impl Mp3Encoder {
         self.encode_frame()
     }
 
-    fn encode_frame(&mut self) -> Result<Vec<u8>, CodecError> {
-        let ch = self.config.channels as usize;
-        let samples: Vec<Vec<f64>> = (0..ch)
-            .map(|c| self.pcm_buf[c].drain(..1152).collect())
-            .collect();
+fn encode_frame(&mut self) -> Result<Vec<u8>, CodecError> {
+let ch = self.config.channels as usize;
+let samples: Vec<Vec<f64>> = (0..ch)
+.map(|c| self.pcm_buf[c].drain(..1152).collect())
+.collect();
 
-        // ---- Build header ----
-        let header = FrameHeader {
-            version: MpegVersion::Mpeg1,
-            layer: Layer::Layer3,
-            bitrate_kbps: self.config.bitrate_kbps,
-            sample_rate: self.config.sample_rate,
-            padding: false,
-            channel_mode: if ch == 1 { ChannelMode::Mono } else { ChannelMode::JointStereo },
-            mode_extension: 0,
-            copyright: false,
-            original: true,
-        };
+// ---- Determine MPEG version based on sample rate ----
+let version = match self.config.sample_rate {
+44100 | 48000 | 32000 => MpegVersion::Mpeg1,
+22050 | 24000 | 16000 => MpegVersion::Mpeg2,
+11025 | 12000 | 8000 => MpegVersion::Mpeg25,
+_ => MpegVersion::Mpeg1, // Default to MPEG1
+};
+
+// ---- Build header ----
+let header = FrameHeader {
+version,
+layer: Layer::Layer3,
+bitrate_kbps: self.config.bitrate_kbps,
+sample_rate: self.config.sample_rate,
+padding: false,
+channel_mode: if ch == 1 { ChannelMode::Mono } else { ChannelMode::JointStereo },
+mode_extension: 0,
+copyright: false,
+original: true,
+};
 
         let frame_size = header.frame_size();
         let mut writer = BitWriter::with_capacity(frame_size);
