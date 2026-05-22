@@ -14,7 +14,7 @@ rcgen = "0.11"
 time-core = "=0.1.2"
 
 [lib]
-name = "simple_ssl"
+name = "ssl4"
 path = "src/lib.rs"
 
 [[example]]
