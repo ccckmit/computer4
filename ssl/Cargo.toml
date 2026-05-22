@@ -1,0 +1,26 @@
+[package]
+name = "simple_ssl"
+version = "0.1.0"
+edition = "2021"
+description = "A simple SSL/TLS library in Rust"
+
+[dependencies]
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+rustls-pemfile = "1.0"
+webpki-roots = "0.25"
+tokio = { version = "=1.29.1", features = ["full"] }
+tokio-rustls = "0.24"
+rcgen = "0.11"
+time-core = "=0.1.2"
+
+[lib]
+name = "simple_ssl"
+path = "src/lib.rs"
+
+[[example]]
+name = "server"
+path = "examples/server.rs"
+
+[[example]]
+name = "client"
+path = "examples/client.rs"
