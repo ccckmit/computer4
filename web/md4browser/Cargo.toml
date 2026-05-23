@@ -1,0 +1,9 @@
+[package]
+name = "md4browser"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = "0.27.2"
+egui_commonmark = "0.16.0"
+reqwest = { version = "0.12.4", features = ["blocking"] }
