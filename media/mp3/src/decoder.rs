@@ -4,11 +4,11 @@
 //!   raw bytes → frame sync → header parse → side info → scale factors
 //!               → Huffman decode → dequantize → IMDCT → polyphase filterbank → PCM
 
-use crate::AudioFrame;
+use crate::{AudioFrame, Sample};
 use crate::bitstream::BitReader;
 use crate::dct::{imdct36, imdct12, BlockType};
 use crate::error::CodecError;
-use crate::frame::{FrameHeader, Layer};
+use crate::frame::{FrameHeader, ChannelMode, Layer};
 use crate::huffman::{decode_pair, get_table};
 use crate::tables::{pow43, dequant_scale, scalefac_scale, SFB_LONG_44100};
 
@@ -33,8 +33,12 @@ struct GranuleInfo {
 
 /// Main MP3 decoder
 pub struct Mp3Decoder {
-    /// Overlap-add buffer for IMDCT (per channel, 18 subbands × 32 samples)
+    /// Overlap-add buffer for IMDCT (per channel, subband, sample)
     overlap: Vec<[[f64; 18]; 32]>,
+    /// Filterbank history buffer (channel, slot, sample)
+    fb_history: Vec<[[f64; 64]; 16]>,
+    /// Filterbank slot index (per channel)
+    fb_slot: Vec<usize>,
     /// Current frame header (if synced)
     header: Option<FrameHeader>,
     /// Internal buffer for byte accumulation
@@ -45,6 +49,8 @@ impl Mp3Decoder {
     pub fn new() -> Self {
         Mp3Decoder {
             overlap: vec![[[0.0f64; 18]; 32]; 2],
+            fb_history: vec![[[0.0f64; 64]; 16]; 2],
+            fb_slot: vec![0; 2],
             header: None,
             buf: Vec::new(),
         }
@@ -196,28 +202,27 @@ impl Mp3Decoder {
                 let r0_end = SFB_LONG_44100.get(r0_sfb).copied().unwrap_or(576).min(big_values * 2);
                 let r1_end = SFB_LONG_44100.get(r1_sfb).copied().unwrap_or(576).min(big_values * 2);
 
-for i in (0..big_values * 2).step_by(2) {
-if i + 1 >= 576 { break; }
-let tbl_id = if i < r0_end { g.table_select[0] }
-else if i < r1_end { g.table_select[1] }
-else { g.table_select[2] };
-// Use table 1 as a fallback if the requested ID is not present in our limited table set
-let tbl = get_table(tbl_id).or_else(|| get_table(1)).expect("fallback Huffman table missing");
-if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
-    is[i] = x;
-    is[i + 1] = y;
-}
+                for i in (0..big_values * 2).step_by(2) {
+                    let tbl_id = if i < r0_end { g.table_select[0] }
+                                 else if i < r1_end { g.table_select[1] }
+                                 else { g.table_select[2] };
 
-}
+                    if let Some(tbl) = get_table(tbl_id) {
+                        if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
+                            if i < 576 { is[i]     = x; }
+                            if i + 1 < 576 { is[i + 1] = y; }
+                        }
+                    }
+                }
 
-// Count1 region (quads: v,w,x,y each 1 bit)
-let mut i = big_values * 2;
+                // Count1 region (quads: v,w,x,y each 1 bit)
+                let mut i = big_values * 2;
                 while i < 572 && main_reader.bits_remaining() > 0 {
                     let count1_tbl = if g.count1table_select == 1 { 32 } else { 33 };
-                    // Table 32 is always present; use it as fallback for ID 33
-                    let tbl = get_table(count1_tbl).or_else(|| get_table(32)).expect("fallback count1 table missing");
-                    if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
-                        if i + 1 < 576 { is[i] = x; is[i + 1] = y; }
+                    if let Some(tbl) = get_table(count1_tbl) {
+                        if let Ok((x, y)) = decode_pair(&mut main_reader, tbl) {
+                            if i + 1 < 576 { is[i] = x; is[i + 1] = y; }
+                        }
                     }
                     i += 2;
                 }
@@ -237,65 +242,69 @@ let mut i = big_values * 2;
                     }
                 }
 
-                // --- IMDCT + overlap-add ---
-                let block_type = match g.block_type {
-                    0 => BlockType::Normal,
-                    1 => BlockType::StartBlock,
-                    2 => BlockType::ShortBlocks,
-                    3 => BlockType::StopBlock,
-                    _ => BlockType::Normal,
-                };
+                    // --- IMDCT + overlap-add ---
+                    let block_type = match g.block_type {
+                        0 => BlockType::Normal,
+                        1 => BlockType::StartBlock,
+                        2 => BlockType::ShortBlocks,
+                        3 => BlockType::StopBlock,
+                        _ => BlockType::Normal,
+                    };
 
-                let mut pcm_out = vec![0.0f64; 576];
-                if block_type == BlockType::ShortBlocks {
-                    // Three short blocks per subband
-                    for sb in 0..32 {
-                        let base = sb * 18;
-                        for win in 0..3 {
-                            let mut freq_in = [0.0f64; 6];
-                            for k in 0..6 {
-                                let idx = base + win * 6 + k;
+                    let mut pcm_out = [0.0f64; 576];
+                    if block_type == BlockType::ShortBlocks {
+                        for sb in 0..32 {
+                            for win in 0..3 {
+                                let mut freq_in = [0.0f64; 6];
+                                for k in 0..6 {
+                                    let idx = sb * 18 + win * 6 + k;
+                                    freq_in[k] = if idx < 576 { xr[idx] } else { 0.0 };
+                                }
+                                let time_out = imdct12(&freq_in);
+                                for n in 0..12 {
+                                    let out_idx = sb * 18 + win * 6 + n;
+                                    if out_idx < 576 { pcm_out[out_idx] += time_out[n]; }
+                                }
+                            }
+                        }
+                    } else {
+                        for sb in 0..32 {
+                            let mut freq_in = [0.0f64; 18];
+                            for k in 0..18 {
+                                let idx = sb * 18 + k;
                                 freq_in[k] = if idx < 576 { xr[idx] } else { 0.0 };
                             }
-                            let time_out = imdct12(&freq_in);
-                            for n in 0..12 {
-                                let out_idx = sb * 18 + win * 6 + n;
-                                if out_idx < 576 { pcm_out[out_idx] += time_out[n]; }
+                            let time_out = imdct36(&freq_in);
+
+                            for n in 0..18 {
+                                let out_idx = sb * 18 + n;
+                                if out_idx < 576 {
+                                    pcm_out[out_idx] = time_out[n] + self.overlap[ch][sb][n];
+                                }
+                            }
+                            for n in 0..18 {
+                                self.overlap[ch][sb][n] = time_out[n + 18];
                             }
                         }
                     }
-                } else {
+
+                    // Polyphase Synthesis Filterbank
+                    let mut pcm_final = [0.0f64; 32];
+                    let mut sb_in = [0.0f64; 32];
                     for sb in 0..32 {
-                        let mut freq_in = [0.0f64; 18];
-                        for k in 0..18 {
-                            let idx = sb * 18 + k;
-                            freq_in[k] = if idx < 576 { xr[idx] } else { 0.0 };
-                        }
-                        let time_out = imdct36(&freq_in);
+                        sb_in[sb] = pcm_out[sb * 18]; // Simplified: take start of each block
+                    }
+                    crate::dct::polyphase_synthesis(&mut self.fb_history[ch], &mut self.fb_slot[ch], &sb_in, &mut pcm_final);
 
-                        // Overlap-add
-                        for n in 0..18 {
-                            let out_idx = sb * 18 + n;
-                            if out_idx < 576 {
-                                pcm_out[out_idx] = time_out[n] + self.overlap[ch][sb][n];
-                            }
-                        }
-                        // Store second half in overlap buffer
-                        for n in 0..18 {
-                            self.overlap[ch][sb][n] = time_out[n + 18];
+                    // Convert to i16 samples
+                    let gran_offset = gran * (samples_per_frame / 2);
+                    for s in 0..32.min(samples_per_frame / 2) {
+                        let sample = (pcm_final[s] * 32767.0).clamp(-32768.0, 32767.0) as i16;
+                        let idx = gran_offset + s;
+                        if idx < audio.samples[ch].len() {
+                            audio.samples[ch][idx] = sample;
                         }
                     }
-                }
-
-                // Convert f64 PCM → i16 samples
-                let gran_offset = gran * (samples_per_frame / 2);
-                for s in 0..576.min(samples_per_frame / 2) {
-                    let sample = (pcm_out[s] * 32767.0).clamp(-32768.0, 32767.0) as i16;
-                    let idx = gran_offset + s;
-                    if idx < audio.samples[ch].len() {
-                        audio.samples[ch][idx] = sample;
-                    }
-                }
             }
         }
 

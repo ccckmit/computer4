@@ -14,7 +14,7 @@ pub fn imdct36(input: &[f64; 18]) -> [f64; 36] {
     for i in 0..36 {
         let mut sum = 0.0;
         for k in 0..18 {
-            sum += input[k] * (PI / 72.0 * (2 * i + 1 + 18) as f64 * (2 * k + 1) as f64).cos();
+            sum += input[k] * (PI / 18.0 * (k as f64 + 0.5) * (i as f64 + 0.5)).cos();
         }
         output[i] = sum;
     }
@@ -29,7 +29,7 @@ pub fn imdct12(input: &[f64; 6]) -> [f64; 12] {
     for i in 0..12 {
         let mut sum = 0.0;
         for k in 0..6 {
-            sum += input[k] * (PI / 24.0 * (2 * i + 1 + 6) as f64 * (2 * k + 1) as f64).cos();
+            sum += input[k] * (PI / 6.0 * (k as f64 + 0.5) * (i as f64 + 0.5)).cos();
         }
         output[i] = sum;
     }
