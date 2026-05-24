@@ -2,6 +2,8 @@ use boa_engine::{Context, Source};
 use eframe::egui;
 use scraper::{Html, Node};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
@@ -88,26 +90,51 @@ impl Browser4 {
     }
 
     fn load_url(&mut self, url: String, ctx: egui::Context) {
-        self.url_input = url.clone();
-        self.current_url = url.clone();
+        let resolved_url = self.resolve_url(&url);
+        self.url_input = resolved_url.clone();
+        self.current_url = resolved_url.clone();
         self.is_loading = true;
         self.page_data = None;
 
         self.history.truncate(self.history_index + 1);
-        self.history.push(url.clone());
+        self.history.push(resolved_url.clone());
         self.history_index = self.history.len() - 1;
+
+        let current_dir = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
 
         let (tx, rx) = mpsc::channel();
         self.rx = Some(rx);
 
+        let is_http = resolved_url.starts_with("http://") || resolved_url.starts_with("https://");
+
         thread::spawn(move || {
-            // 抓取網頁
-            let html_text = match reqwest::blocking::get(&url) {
-                Ok(resp) => resp.text().unwrap_or_default(),
-                Err(e) => {
-                    let _ = tx.send(FetchResult::Error(format!("網路錯誤: {}", e)));
-                    ctx.request_repaint();
-                    return;
+            let html_text = if is_http {
+                match reqwest::blocking::get(&resolved_url) {
+                    Ok(resp) => resp.text().unwrap_or_default(),
+                    Err(e) => {
+                        let _ = tx.send(FetchResult::Error(format!("網路錯誤: {}", e)));
+                        ctx.request_repaint();
+                        return;
+                    }
+                }
+            } else {
+                let file_path = if resolved_url.starts_with("file://") {
+                    resolved_url.trim_start_matches("file://").to_string()
+                } else if resolved_url.starts_with('/') || resolved_url.starts_with("./") || resolved_url.starts_with("../") {
+                    resolved_url.to_string()
+                } else {
+                    format!("{}/{}", current_dir, resolved_url)
+                };
+
+                match fs::read_to_string(&file_path) {
+                    Ok(content) => content,
+                    Err(e) => {
+                        let _ = tx.send(FetchResult::Error(format!("檔案讀取錯誤: {} ({})", file_path, e)));
+                        ctx.request_repaint();
+                        return;
+                    }
                 }
             };
 
@@ -143,6 +170,20 @@ impl Browser4 {
             }));
             ctx.request_repaint();
         });
+    }
+
+    fn resolve_url(&self, url: &str) -> String {
+        let url = url.trim();
+        if url.starts_with("http://") || url.starts_with("https://") {
+            return url.to_string();
+        }
+        if url.starts_with("file://") {
+            return url.to_string();
+        }
+        if url.starts_with('/') || url.starts_with("./") || url.starts_with("../") {
+            return url.to_string();
+        }
+        url.to_string()
     }
 }
 
@@ -220,18 +261,28 @@ fn render_dom(ui: &mut egui::Ui, node: &DomNode, clicked_link: &mut Option<Strin
                 // 不顯示的標籤
                 "head" | "script" | "style" | "title" => {}
 
-                // 標題 (使用大字體)
+                // 標題 - 垂直排列
                 "h1" => {
-                    ui.horizontal_wrapped(|ui| {
-                        for c in children { ui.heading(get_text_only(c)); }
+                    ui.vertical(|ui| {
+                        ui.heading(get_text_only(node));
                     });
                     ui.add_space(8.0);
                 }
-                "h2" | "h3" => {
-                    ui.horizontal_wrapped(|ui| {
-                        for c in children {
-                            ui.label(egui::RichText::new(get_text_only(c)).size(20.0).strong());
-                        }
+                "h2" => {
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(get_text_only(node)).size(22.0).strong());
+                    });
+                    ui.add_space(6.0);
+                }
+                "h3" => {
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(get_text_only(node)).size(18.0).strong());
+                    });
+                    ui.add_space(4.0);
+                }
+                "h4" | "h5" | "h6" => {
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new(get_text_only(node)).size(16.0).strong());
                     });
                     ui.add_space(4.0);
                 }
@@ -245,44 +296,86 @@ fn render_dom(ui: &mut egui::Ui, node: &DomNode, clicked_link: &mut Option<Strin
                     }
                 }
 
-                // 圖片 (由於沒寫圖片下載引擎，這裡用 Placeholder 代替)
+                // 圖片
                 "img" => {
                     let alt = attrs.get("alt").cloned().unwrap_or("Image".into());
-                    ui.label(egui::RichText::new(format!("🖼 [{}]", alt)).color(egui::Color32::GRAY));
+                    ui.label(egui::RichText::new(format!("[圖片: {}]", alt)).color(egui::Color32::GRAY));
                 }
 
-                // 段落 & 區塊 (垂直排列)
-                "p" | "div" | "ul" => {
+                // 區塊元素 - 垂直排列
+                "p" | "div" | "article" | "section" | "header" | "footer" | "nav" | "main" | "aside" | "blockquote" | "figure" | "figcaption" | "hr" => {
                     ui.vertical(|ui| {
                         for c in children { render_dom(ui, c, clicked_link); }
                     });
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
+                }
+
+                // 列表
+                "ul" | "ol" => {
+                    ui.vertical(|ui| {
+                        for c in children { render_dom(ui, c, clicked_link); }
+                    });
+                    ui.add_space(6.0);
                 }
 
                 // 列表項目
                 "li" => {
-                    ui.horizontal(|ui| {
-                        ui.label("•");
-                        ui.vertical(|ui| {
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("•");
                             for c in children { render_dom(ui, c, clicked_link); }
                         });
                     });
                 }
 
-                // 行內標籤 (粗體等)
+                // 預格式化文字
+                "pre" => {
+                    ui.vertical(|ui| {
+                        ui.add_space(4.0);
+                        for c in children {
+                            if let DomNode::Text(t) = c {
+                                ui.label(egui::RichText::new(t).code());
+                            } else {
+                                render_dom(ui, c, clicked_link);
+                            }
+                        }
+                        ui.add_space(4.0);
+                    });
+                }
+
+                // 換行
+                "br" => {
+                    ui.set_height(16.0);
+                }
+
+                // 行內標籤 - 橫向排列
                 "b" | "strong" => {
                     let text = get_text_only(node);
                     ui.label(egui::RichText::new(text).strong());
                 }
+                "i" | "em" => {
+                    let text = get_text_only(node);
+                    ui.label(egui::RichText::new(text).italics());
+                }
+                "u" => {
+                    let text = get_text_only(node);
+                    ui.label(egui::RichText::new(text).underline());
+                }
+                "s" | "del" => {
+                    let text = get_text_only(node);
+                    ui.label(egui::RichText::new(text).strikethrough());
+                }
+                "span" | "small" | "sub" | "sup" | "mark" | "code" => {
+                    let text = get_text_only(node);
+                    ui.label(egui::RichText::new(text).code());
+                }
 
-                // 預設渲染：展開子節點
+                // 未知標籤 - 垂直排列子節點
                 _ => {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 2.0; // 模擬行內排版
-                        for c in children {
-                            render_dom(ui, c, clicked_link);
-                        }
+                    ui.vertical(|ui| {
+                        for c in children { render_dom(ui, c, clicked_link); }
                     });
+                    ui.add_space(4.0);
                 }
             }
         }
@@ -376,13 +469,20 @@ impl eframe::App for Browser4 {
 
                 // 若有超連結被點擊，觸發跳轉
                 if let Some(link) = clicked_link {
-                    let target = if link.starts_with("http") {
-                        link
+                    let target = if link.starts_with("http") || link.starts_with("file://") {
+                        link.to_string()
                     } else {
-                        // 處理相對路徑的極簡版
-                        format!("{}/{}", self.current_url.trim_end_matches('/'), link.trim_start_matches('/'))
+                        let base_dir = Path::new(&self.current_url)
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        if link.starts_with('/') {
+                            format!("{}/{}", base_dir.trim_end_matches('/'), link.trim_start_matches('/'))
+                        } else {
+                            format!("{}/{}", base_dir, link)
+                        }
                     };
-self.load_url(target, ctx.clone());
+                    self.load_url(target, ctx.clone());
                 }
             } else {
                 ui.centered_and_justified(|ui| ui.label("輸入網址以開始瀏覽"));
