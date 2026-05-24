@@ -1,5 +1,6 @@
 use eframe::egui;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -46,12 +47,19 @@ impl DirEntry {
     }
 }
 
+struct EditorApp {
+    path: PathBuf,
+    content: String,
+}
+
 struct FileManagerApp {
     current_path: PathBuf,
     entries: Vec<DirEntry>,
     selected_index: Option<usize>,
     error_message: Option<String>,
     path_input: String,
+    context_menu_index: Option<usize>,
+    editor: Option<EditorApp>,
 }
 
 impl FileManagerApp {
@@ -63,6 +71,8 @@ impl FileManagerApp {
             selected_index: None,
             error_message: None,
             path_input: current_path.to_string_lossy().to_string(),
+            context_menu_index: None,
+            editor: None,
         };
         app.load_directory();
         app
@@ -126,10 +136,84 @@ impl FileManagerApp {
             self.error_message = Some(format!("Path not found: {}", path_str));
         }
     }
+
+    fn open_editor(&mut self, path: &PathBuf) {
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                self.editor = Some(EditorApp {
+                    path: path.clone(),
+                    content,
+                });
+            }
+            Err(e) => {
+                self.error_message = Some(format!("Cannot open file: {}", e));
+            }
+        }
+    }
+}
+
+fn show_editor_ui(app: &mut FileManagerApp, ctx: &egui::Context) {
+    let path_name = app.editor.as_ref().unwrap().path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Untitled".to_string());
+
+    let mut save_clicked = false;
+    let mut cancel_clicked = false;
+
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.heading(format!("Editing: {}", path_name));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Save (Ctrl+S)").clicked() {
+                    save_clicked = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel_clicked = true;
+                }
+            });
+        });
+
+        ui.add_space(8.0);
+
+        if save_clicked || cancel_clicked {
+            return;
+        }
+
+        let text_rect = ui.available_rect_before_wrap();
+        let content = app.editor.as_mut().unwrap();
+        let mut text_buffer = content.content.clone();
+        let textui = egui::TextEdit::multiline(&mut text_buffer)
+            .font(egui::FontId::new(14.0, egui::FontFamily::Monospace))
+            .desired_width(f32::INFINITY)
+            .lock_focus(false);
+        ui.put(text_rect, textui);
+        content.content = text_buffer;
+    });
+
+    if save_clicked {
+        let editor = app.editor.take().unwrap();
+        if let Ok(mut file) = File::create(&editor.path) {
+            let _ = file.write_all(editor.content.as_bytes());
+        }
+        app.load_directory();
+    } else if cancel_clicked {
+        app.editor = None;
+    } else if ctx.input(|i| i.key_pressed(egui::Key::S) && i.modifiers.ctrl) {
+        let editor = app.editor.take().unwrap();
+        if let Ok(mut file) = File::create(&editor.path) {
+            let _ = file.write_all(editor.content.as_bytes());
+        }
+        app.load_directory();
+    }
 }
 
 impl eframe::App for FileManagerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self.editor.is_some() {
+            show_editor_ui(self, ctx);
+            return;
+        }
+
         let nav_height = 36.0;
         let status_height = 36.0;
         let spacing = 8.0;
@@ -178,11 +262,46 @@ impl eframe::App for FileManagerApp {
                                 )),
                             );
 
-                            if response.clicked() { self.selected_index = Some(idx); }
-                            if response.double_clicked() && entry.is_dir { self.navigate_to(idx); }
+                            if response.clicked() {
+                                self.selected_index = Some(idx);
+                                self.context_menu_index = None;
+                            }
+                            if response.double_clicked() && entry.is_dir {
+                                self.navigate_to(idx);
+                            }
+                            if response.secondary_clicked() {
+                                self.selected_index = Some(idx);
+                                self.context_menu_index = Some(idx);
+                            }
                         }
                     });
             });
+
+            if let Some(menu_idx) = self.context_menu_index {
+                if menu_idx < self.entries.len() {
+                    let entry_path = self.entries[menu_idx].path.clone();
+                    let is_dir = self.entries[menu_idx].is_dir;
+                    if !is_dir {
+                        egui::Area::new(egui::Id::new("context_menu"))
+                            .fixed_pos(ctx.input(|i| i.pointer.interact_pos().unwrap_or(egui::pos2(0.0, 0.0))))
+                            .show(ctx, |ui| {
+                                ui.set_width(120.0);
+                                egui::Frame::popup(&ctx.style()).show(ui, |ui| {
+                                    if ui.button("Edit").clicked() {
+                                        self.open_editor(&entry_path);
+                                        self.context_menu_index = None;
+                                    }
+                                });
+                            });
+                    } else {
+                        self.context_menu_index = None;
+                    }
+                }
+            }
+
+            if ctx.input(|i| i.pointer.any_pressed()) {
+                self.context_menu_index = None;
+            }
 
             ui.add_space(spacing);
 
@@ -197,6 +316,12 @@ impl eframe::App for FileManagerApp {
                     if self.selected_index.map(|i| i < self.entries.len() && self.entries[i].is_dir).unwrap_or(false) {
                         if ui.button("Open").clicked() {
                             if let Some(idx) = self.selected_index { self.navigate_to(idx); }
+                        }
+                    }
+                    if self.selected_index.map(|i| i < self.entries.len() && !self.entries[i].is_dir).unwrap_or(false) {
+                        let path = self.entries[self.selected_index.unwrap()].path.clone();
+                        if ui.button("Edit").clicked() {
+                            self.open_editor(&path);
                         }
                     }
                 });
