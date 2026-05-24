@@ -1,0 +1,1 @@
+qemu-system-riscv32 -kernel target/rvboard4.elf -machine virt -nographic

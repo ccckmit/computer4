@@ -130,79 +130,76 @@ impl FileManagerApp {
 
 impl eframe::App for FileManagerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let nav_height = 36.0;
+        let status_height = 36.0;
+        let spacing = 8.0;
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("◀ Back").clicked() {
-                    self.go_to_parent();
-                }
-                if ui.button("⟳").clicked() {
-                    self.load_directory();
-                }
-                if ui.button("🏠").clicked() {
-                    if let Some(home) = dirs::home_dir() {
-                        self.navigate_to_path(&home.to_string_lossy());
+            ui.allocate_ui(egui::vec2(ui.available_width(), nav_height), |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button("◀").clicked() { self.go_to_parent(); }
+                    if ui.button("⟳").clicked() { self.load_directory(); }
+                    if ui.button("🏠").clicked() {
+                        if let Some(home) = dirs::home_dir() {
+                            self.navigate_to_path(&home.to_string_lossy());
+                        }
                     }
-                }
-                let le = ui.add(egui::TextEdit::singleline(&mut self.path_input)
-                    .hint_text("Enter path...")
-                    .desired_width(ui.available_width() - 20.0));
-                if le.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    let path = self.path_input.clone();
-                    self.navigate_to_path(&path);
-                }
+                    let le = ui.add(egui::TextEdit::singleline(&mut self.path_input)
+                        .hint_text("Enter path...")
+                        .desired_width(ui.available_width() - 20.0));
+                    if le.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        let path = self.path_input.clone();
+                        self.navigate_to_path(&path);
+                    }
+                });
             });
 
-            ui.add_space(8.0);
+            ui.add_space(spacing);
 
-            let item_height = 36.0;
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .show_rows(ui, item_height, self.entries.len(), |ui, row_range| {
-                    for idx in row_range {
-                        if idx >= self.entries.len() {
-                            continue;
+            let available_after_nav = ui.available_height() - nav_height - status_height - spacing * 2.0;
+            ui.allocate_ui(egui::vec2(ui.available_width(), available_after_nav), |ui| {
+                let item_height = 36.0;
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .show_rows(ui, item_height, self.entries.len(), |ui, row_range| {
+                        for idx in row_range {
+                            if idx >= self.entries.len() { continue; }
+                            let entry = &self.entries[idx];
+                            let is_selected = self.selected_index == Some(idx);
+
+                            let response = ui.selectable_label(
+                                is_selected,
+                                egui::RichText::new(format!(
+                                    "{}  {:<40}  {:>10}  {}",
+                                    if entry.is_dir { "📁" } else { "📄" },
+                                    entry.name,
+                                    entry.format_size(),
+                                    entry.modified
+                                )),
+                            );
+
+                            if response.clicked() { self.selected_index = Some(idx); }
+                            if response.double_clicked() && entry.is_dir { self.navigate_to(idx); }
                         }
-                        let entry = &self.entries[idx];
-                        let is_selected = self.selected_index == Some(idx);
+                    });
+            });
 
-                        let response = ui.selectable_label(
-                            is_selected,
-                            egui::RichText::new(format!(
-                                "{}  {:<40}  {:>10}  {}",
-                                if entry.is_dir { "📁" } else { "📄" },
-                                entry.name,
-                                entry.format_size(),
-                                entry.modified
-                            )),
-                        );
+            ui.add_space(spacing);
 
-                        if response.clicked() {
-                            self.selected_index = Some(idx);
-                        }
-
-                        if response.double_clicked() && entry.is_dir {
-                            self.navigate_to(idx);
+            ui.allocate_ui(egui::vec2(ui.available_width(), status_height), |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{} items", self.entries.len()));
+                    if let Some(ref err) = self.error_message {
+                        ui.add_space(20.0);
+                        ui.colored_label(egui::Color32::RED, err);
+                    }
+                    ui.add_space(20.0);
+                    if self.selected_index.map(|i| i < self.entries.len() && self.entries[i].is_dir).unwrap_or(false) {
+                        if ui.button("Open").clicked() {
+                            if let Some(idx) = self.selected_index { self.navigate_to(idx); }
                         }
                     }
                 });
-
-            if let Some(ref err) = self.error_message {
-                ui.add_space(8.0);
-                ui.colored_label(egui::Color32::RED, err);
-            }
-
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label(format!(" {} items", self.entries.len()));
-                ui.add_space(20.0);
-
-                if self.selected_index.map(|i| i < self.entries.len() && self.entries[i].is_dir).unwrap_or(false) {
-                    if ui.button("Open").clicked() {
-                        if let Some(idx) = self.selected_index {
-                            self.navigate_to(idx);
-                        }
-                    }
-                }
             });
         });
     }
@@ -219,7 +216,19 @@ fn main() {
     eframe::run_native(
         "Win4 File Manager",
         options,
-        Box::new(|_cc| Ok(Box::new(FileManagerApp::new()))),
+        Box::new(|cc| {
+            let app = FileManagerApp::new();
+
+            let mut fonts = egui::FontDefinitions::default();
+            if let Ok(font_data) = std::fs::read("font/font.ttf") {
+                fonts.font_data.insert("chinese".to_owned(), egui::FontData::from_owned(font_data).into());
+                fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "chinese".to_owned());
+                fonts.families.entry(egui::FontFamily::Monospace).or_default().push("chinese".to_owned());
+            }
+            cc.egui_ctx.set_fonts(fonts);
+
+            Ok(Box::new(app))
+        }),
     )
     .expect("Failed to run file manager");
 }

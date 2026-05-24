@@ -1,0 +1,10 @@
+[build]
+target = "riscv32i-unknown-none-elf"
+
+[target.riscv32i-unknown-none-elf]
+rustflags = [
+    "-C", "linker=/tmp/riscv-wrapper/gcc",
+    "-C", "linker-flavor=gcc",
+    "-C", "link-arg=-Wl,-T../linker/rvboard32.ld",
+    "-C", "link-arg=-fuse-ld=lld",
+]

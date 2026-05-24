@@ -1,0 +1,12 @@
+{
+    "arch": "riscv",
+    "llvm-target": "riscv32",
+    "target-endian": "little",
+    "target-pointer-width": "32",
+    "os": "none",
+    "linker": "riscv64-unknown-elf-gcc",
+    "linker-flavor": "gcc",
+    "executables": true,
+    "panic-strategy": "abort",
+    "max-atomic-width": "0"
+}
