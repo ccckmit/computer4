@@ -51,16 +51,18 @@ struct FileManagerApp {
     entries: Vec<DirEntry>,
     selected_index: Option<usize>,
     error_message: Option<String>,
+    path_input: String,
 }
 
 impl FileManagerApp {
     fn new() -> Self {
         let current_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let mut app = Self {
-            current_path,
+            current_path: current_path.clone(),
             entries: Vec::new(),
             selected_index: None,
             error_message: None,
+            path_input: current_path.to_string_lossy().to_string(),
         };
         app.load_directory();
         app
@@ -96,6 +98,7 @@ impl FileManagerApp {
     fn go_to_parent(&mut self) {
         if let Some(parent) = self.current_path.parent() {
             self.current_path = parent.to_path_buf();
+            self.path_input = self.current_path.to_string_lossy().to_string();
             self.selected_index = None;
             self.load_directory();
         }
@@ -104,8 +107,23 @@ impl FileManagerApp {
     fn navigate_to(&mut self, index: usize) {
         if index < self.entries.len() && self.entries[index].is_dir {
             self.current_path = self.entries[index].path.clone();
+            self.path_input = self.current_path.to_string_lossy().to_string();
             self.selected_index = None;
             self.load_directory();
+        }
+    }
+
+    fn navigate_to_path(&mut self, path_str: &str) {
+        let path = PathBuf::from(path_str);
+        if path.is_dir() {
+            self.current_path = path;
+            self.path_input = self.current_path.to_string_lossy().to_string();
+            self.selected_index = None;
+            self.load_directory();
+        } else if path.exists() {
+            self.error_message = Some(format!("Not a directory: {}", path_str));
+        } else {
+            self.error_message = Some(format!("Path not found: {}", path_str));
         }
     }
 }
@@ -117,11 +135,21 @@ impl eframe::App for FileManagerApp {
                 if ui.button("◀ Back").clicked() {
                     self.go_to_parent();
                 }
-                if ui.button("⟳ Refresh").clicked() {
+                if ui.button("⟳").clicked() {
                     self.load_directory();
                 }
-                ui.separator();
-                ui.strong(format!("📁 {}", self.current_path.display()));
+                if ui.button("🏠").clicked() {
+                    if let Some(home) = dirs::home_dir() {
+                        self.navigate_to_path(&home.to_string_lossy());
+                    }
+                }
+                let le = ui.add(egui::TextEdit::singleline(&mut self.path_input)
+                    .hint_text("Enter path...")
+                    .desired_width(ui.available_width() - 20.0));
+                if le.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    let path = self.path_input.clone();
+                    self.navigate_to_path(&path);
+                }
             });
 
             ui.add_space(8.0);
@@ -169,18 +197,10 @@ impl eframe::App for FileManagerApp {
                 ui.add_space(20.0);
 
                 if self.selected_index.map(|i| i < self.entries.len() && self.entries[i].is_dir).unwrap_or(false) {
-                    if ui.button("Open Folder").clicked() {
+                    if ui.button("Open").clicked() {
                         if let Some(idx) = self.selected_index {
                             self.navigate_to(idx);
                         }
-                    }
-                }
-
-                if ui.button("Go Home").clicked() {
-                    if let Some(home) = dirs::home_dir() {
-                        self.current_path = home;
-                        self.selected_index = None;
-                        self.load_directory();
                     }
                 }
             });
