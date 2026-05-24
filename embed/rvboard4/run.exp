@@ -1,0 +1,16 @@
+#!/usr/bin/expect -f
+set timeout 3
+spawn qemu-system-riscv32 -kernel target/rvboard4.elf -machine virt -nographic
+expect {
+    "Hello rvboard4" {
+        puts "\n========================================"
+        puts "Hello rvboard4"
+        puts "========================================"
+        exp_send "q\r"
+        expect eof
+    }
+    timeout {
+        puts "Timeout - no output"
+        exp_send "q\r"
+    }
+}
