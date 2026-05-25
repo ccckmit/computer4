@@ -1,0 +1,16 @@
+[package]
+name = "aplayer4"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "aplayer4"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aplayer4"
+path = "src/main.rs"
+
+[dependencies]
+rodio = { version = "0.20", features = ["symphonia-all"] }
+crossterm = "0.27"

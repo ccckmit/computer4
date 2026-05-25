@@ -1,0 +1,14 @@
+[package]
+name = "synthesis"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[lib]
+name = "synthesis"
+path = "src/lib.rs"
+
+[[bin]]
+name = "synthesis"
+path = "src/main.rs"
