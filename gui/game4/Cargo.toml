@@ -1,0 +1,9 @@
+[package]
+name = "game4"
+version = "0.1.0"
+edition = "2021"
+description = "A DIY Game Framework: game4.js (frontend) + game4.rs (Rust)"
+
+[dependencies]
+tungstenite = "0.21"
+rusqlite = { version = "0.31", features = ["bundled"] }

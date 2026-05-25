@@ -1,0 +1,85 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  font-family: 'Segoe UI', sans-serif;
+}
+.container {
+  background: #16213e;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  text-align: center;
+}
+h1 {
+  color: #e0e0e0;
+  font-size: 20px;
+  margin-bottom: 12px;
+  font-weight: 400;
+  letter-spacing: 2px;
+}
+h1 span { color: #64ffda; }
+canvas {
+  display: block;
+  border-radius: 8px;
+  background: #0f0f23;
+}
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+}
+.controls {
+  display: flex;
+  gap: 20px;
+  color: #888;
+  font-size: 13px;
+  font-family: 'Consolas', monospace;
+}
+.controls kbd {
+  background: #2a2a4a;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: #64ffda;
+  font-size: 12px;
+}
+.status { font-size: 13px; font-family: 'Consolas', monospace; }
+#ws-status.connected { color: #64ffda; }
+#ws-status.disconnected { color: #ff5252; }
+
+.leaderboard-panel {
+  margin-top: 16px;
+  border-top: 1px solid #2a2a4a;
+  padding-top: 12px;
+}
+.leaderboard-panel h2 {
+  color: #888;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+#leaderboard .empty {
+  color: #555;
+  font-size: 13px;
+  padding: 8px;
+}
+#leaderboard .entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 16px;
+  font-family: 'Consolas', monospace;
+  font-size: 13px;
+  color: #ccc;
+}
+#leaderboard .entry:nth-child(odd) { background: rgba(255,255,255,0.03); }
+#leaderboard .entry .winner { font-weight: bold; }
+#leaderboard .entry .winner.win { color: #64ffda; }
+#leaderboard .entry .winner.lose { color: #ff5252; }
+#leaderboard .entry .result { color: #fff; }
+#leaderboard .entry .rally { color: #666; font-size: 12px; }

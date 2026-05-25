@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>game4 — Pong</title>
+  <link rel="stylesheet" href="/game4.css">
+</head>
+<body>
+<div class="container">
+  <h1>game4 · <span>Pong</span></h1>
+  <canvas id="pong-canvas" width="800" height="500"></canvas>
+  <div class="bar">
+    <div class="controls">
+      <span>↑ <kbd>W</kbd> / ↓ <kbd>S</kbd> 移動</span>
+      <span><kbd>R</kbd> 重新開始</span>
+    </div>
+    <div class="status">
+      <span id="ws-status" class="disconnected">連線中...</span>
+    </div>
+  </div>
+  <div class="leaderboard-panel">
+    <h2>排行榜</h2>
+    <div id="leaderboard"><div class="empty">等待第一場比賽...</div></div>
+  </div>
+</div>
+
+<script src="/game4.js"></script>
+<script src="/examples/pong/pong.js"></script>
+</body>
+</html>
