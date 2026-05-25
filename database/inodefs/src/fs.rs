@@ -3,10 +3,13 @@ use std::path::Path;
 
 use crate::bitmaps::{BlockBitmap, InodeBitmap};
 use crate::dir::{DirEntry, Directory};
-use crate::disk::{BlockSize, BLOCK_SIZE, Disk};
+use crate::disk::{BLOCK_SIZE, Disk};
 use crate::error::{Error, Result};
 use crate::inode::{make_mode, FileType, Inode, INODE_SIZE};
-use crate::superblock::{INODE_COUNT, INODE_TABLE_BLOCKS, INODE_TABLE_START, DATA_BLOCKS_START, ROOT_INODE, Superblock, SUPERBLOCK_BLOCK};
+use crate::superblock::{
+    INODE_TABLE_BLOCKS, INODE_TABLE_START, DATA_BLOCKS_START, Superblock,
+    SUPERBLOCK_BLOCK, ROOT_INODE, INODES_PER_BLOCK,
+};
 
 pub struct InodeFs {
     disk: Disk,
@@ -20,15 +23,13 @@ pub struct InodeFs {
 
 impl InodeFs {
     pub fn format(path: &Path) -> Result<Self> {
-        let disk = Disk::create(path)?;
+        let mut disk = Disk::create(path)?;
 
         let sb = Superblock::default();
         disk.write_block(SUPERBLOCK_BLOCK, &sb.to_bytes())?;
 
-        let mut inode_bitmap = InodeBitmap::new();
-        inode_bitmap.allocate();
-
-        let mut block_bitmap = BlockBitmap::new();
+        let inode_bitmap = InodeBitmap::new();
+        let block_bitmap = BlockBitmap::new();
 
         disk.write_block(1, &inode_bitmap.to_bytes())?;
         disk.write_block(2, &block_bitmap.to_bytes())?;
@@ -277,7 +278,7 @@ impl InodeFs {
         Ok(())
     }
 
-    pub fn lookup_inode(&self, parent: u32, name: &str) -> Result<Option<u32>> {
+    pub fn lookup_inode(&mut self, parent: u32, name: &str) -> Result<Option<u32>> {
         if name.is_empty() {
             return Ok(Some(parent));
         }
@@ -291,41 +292,41 @@ impl InodeFs {
             return Err(Error::InvalidInode(ino));
         }
 
-        if let Some(inode) = self.inode_cache.get(&ino) {
-            return Ok(*inode);
+        if let Some(inode) = self.inode_cache.get(&ino).cloned() {
+            return Ok(inode);
         }
 
-        let block_offset = (ino - 1) / INODE_SIZE;
+        let block_offset = (ino - 1) / INODES_PER_BLOCK;
         let block_num = INODE_TABLE_START + block_offset;
         let block_data = self.disk.read_block(block_num)?;
 
-        let offset = ((ino - 1) % INODE_SIZE) as usize;
+        let offset = ((ino - 1) % INODES_PER_BLOCK) as usize * INODE_SIZE as usize;
         let inode_data = &block_data[offset..offset + INODE_SIZE as usize];
         let inode = Inode::from_bytes(inode_data);
 
-        self.inode_cache.insert(ino, inode);
+        self.inode_cache.insert(ino, inode.clone());
         Ok(inode)
     }
 
     fn write_inode(&mut self, ino: u32, inode: &Inode) -> Result<()> {
-        let block_offset = (ino - 1) / INODE_SIZE;
+        let block_offset = (ino - 1) / INODES_PER_BLOCK;
         let block_num = INODE_TABLE_START + block_offset;
         let mut block_data = self.disk.read_block(block_num)?;
 
-        let offset = ((ino - 1) % INODE_SIZE) as usize;
+        let offset = ((ino - 1) % INODES_PER_BLOCK) as usize * INODE_SIZE as usize;
         let inode_bytes = inode.to_bytes();
         block_data[offset..offset + INODE_SIZE as usize].copy_from_slice(&inode_bytes);
 
         self.disk.write_block(block_num, &block_data)?;
-        self.inode_cache.insert(ino, *inode);
+        self.inode_cache.insert(ino, inode.clone());
         self.modified = true;
 
         Ok(())
     }
 
-    fn read_directory(&mut self, ino: u32) -> Result<Directory> {
-        if let Some(dir) = self.dir_cache.get(&ino) {
-            return Ok(dir.clone());
+    pub fn read_directory(&mut self, ino: u32) -> Result<Directory> {
+        if let Some(dir) = self.dir_cache.get(&ino).cloned() {
+            return Ok(dir);
         }
 
         let inode = self.read_inode(ino)?;
@@ -333,7 +334,7 @@ impl InodeFs {
             return Err(Error::NotDirectory(format!("inode {}", ino)));
         }
 
-        let data = self.read_file_data(inode)?;
+        let data = self.read_file_data(&inode)?;
         let dir = Directory::from_inode_content(&data);
 
         self.dir_cache.insert(ino, dir.clone());
@@ -347,7 +348,7 @@ impl InodeFs {
         Ok(())
     }
 
-    fn read_file_data(&mut self, inode: Inode) -> Result<Vec<u8>> {
+    fn read_file_data(&mut self, inode: &Inode) -> Result<Vec<u8>> {
         let mut result = Vec::new();
         let mut remaining = inode.size as usize;
 
@@ -373,7 +374,7 @@ impl InodeFs {
             }
         }
 
-        let mut blocks_needed = (data.len() as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        let blocks_needed = (data.len() as u32 + BLOCK_SIZE - 1) / BLOCK_SIZE;
         let mut blocks_allocated = 0u32;
         let mut block_nums = Vec::new();
 
@@ -421,7 +422,7 @@ impl InodeFs {
             return Ok(0);
         }
 
-        let data = self.read_file_data(inode)?;
+        let data = self.read_file_data(&inode)?;
         let available = (inode.size - offset) as usize;
         let to_read = available.min(buf.len()).min(data.len() - offset as usize);
 
@@ -436,7 +437,7 @@ impl InodeFs {
             return Err(Error::NotSupported("Cannot write to non-regular file".into()));
         }
 
-        let mut file_data = self.read_file_data(inode)?;
+        let mut file_data = self.read_file_data(&inode)?;
         let required_size = offset as usize + data.len();
 
         if required_size > file_data.len() {
@@ -450,9 +451,9 @@ impl InodeFs {
         Ok(data.len() as u32)
     }
 
-    pub fn truncate(&mut self, ino: u32, size: u32) -> Result<()> {
-        let inode = self.read_inode(ino)?;
-        self.write_file_data(ino, &inode.size.to_le_bytes().to_vec())?;
+    pub fn truncate(&mut self, ino: u32, _size: u32) -> Result<()> {
+        let _inode = self.read_inode(ino)?;
+        self.write_file_data(ino, &[])?;
         self.sync()?;
         Ok(())
     }
@@ -488,6 +489,23 @@ impl InodeFs {
 
     pub fn sync(&mut self) -> Result<()> {
         if self.modified {
+            let mut block_inodes: HashMap<u32, Vec<(u32, Inode)>> = HashMap::new();
+
+            for (&ino, inode) in &self.inode_cache {
+                let block_num = INODE_TABLE_START + (ino - 1) / INODES_PER_BLOCK;
+                block_inodes.entry(block_num).or_default().push((ino, inode.clone()));
+            }
+
+            for (block_num, inodes) in block_inodes {
+                let mut buf = self.disk.read_block(block_num)?;
+                for (ino, inode) in inodes {
+                    let offset = ((ino - 1) % INODES_PER_BLOCK) as usize * INODE_SIZE as usize;
+                    let inode_bytes = inode.to_bytes();
+                    buf[offset..offset + INODE_SIZE as usize].copy_from_slice(&inode_bytes);
+                }
+                self.disk.write_block(block_num, &buf)?;
+            }
+
             self.disk.write_block(1, &self.inode_bitmap.to_bytes())?;
             self.disk.write_block(2, &self.block_bitmap.to_bytes())?;
             self.modified = false;
@@ -591,7 +609,7 @@ mod tests {
 
             let mut buf = [0u8; 1024];
             let n = fs.read(ino, 0, &mut buf).unwrap();
-            assert_eq!(&buf[..n], b"Hello, InodeFS!");
+            assert_eq!(&buf[..n as usize], b"Hello, InodeFS!");
         }
 
         std::fs::remove_file(&path).ok();
@@ -611,7 +629,7 @@ mod tests {
 
             let mut buf = [0u8; 1024];
             let n = fs.read(ino, 0, &mut buf).unwrap();
-            assert_eq!(&buf[..n], b"content");
+            assert_eq!(&buf[..n as usize], b"content");
 
             fs.unlink(ROOT_INODE, "hardlink.txt").unwrap();
             let found = fs.lookup_inode(ROOT_INODE, "hardlink.txt").unwrap();

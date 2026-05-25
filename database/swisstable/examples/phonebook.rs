@@ -59,13 +59,19 @@ fn main() {
     );
 
     if let Some(old_contact) = old {
-        println!("\nUpdated Charlie's phone from {} to 0999-888-777", old_contact.phone);
+        println!(
+            "\nUpdated Charlie's phone from {} to 0999-888-777",
+            old_contact.phone
+        );
     }
 
     // Search for a contact
     let search_name = String::from("Alice");
     if let Some(contact) = phonebook.get(&search_name) {
-        println!("\nFound {}: phone={}, email={}", search_name, contact.phone, contact.email);
+        println!(
+            "\nFound {}: phone={}, email={}",
+            search_name, contact.phone, contact.email
+        );
     } else {
         println!("\n{} not found in phonebook", search_name);
     }

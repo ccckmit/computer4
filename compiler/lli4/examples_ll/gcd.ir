@@ -1,0 +1,60 @@
+; ModuleID = 'rustc4'
+target triple = "arm64-apple-darwin"
+
+declare i32 @printf(i8*, ...)
+
+@.print_int_fmt = private unnamed_addr constant [4 x i8] c"%d\0A\00"
+
+define void @print_int(i32 %x) {
+  %fmt = getelementptr [4 x i8], [4 x i8]* @.print_int_fmt, i64 0, i64 0
+  call i32 (i8*, ...) @printf(i8* %fmt, i32 %x)
+  ret void
+}
+
+define i32 @gcd(i32 %a, i32 %b) {
+entry0:
+  %0 = alloca i32
+  store i32 %a, i32* %0
+  %1 = alloca i32
+  store i32 %b, i32* %1
+  %2 = alloca i32
+  %3 = load i32, i32* %0
+  store i32 %3, i32* %2
+  %4 = alloca i32
+  %5 = load i32, i32* %1
+  store i32 %5, i32* %4
+  br label %while_cond0
+while_cond0:
+  %6 = load i32, i32* %4
+  %7 = add i32 0, 0
+  %8 = icmp ne i32 %6, %7
+  br i1 %8, label %while_body1, label %while_end2
+while_body1:
+  %9 = alloca i32
+  %10 = load i32, i32* %4
+  store i32 %10, i32* %9
+  %11 = load i32, i32* %2
+  %12 = load i32, i32* %4
+  %13 = srem i32 %11, %12
+  store i32 %13, i32* %4
+  %14 = load i32, i32* %9
+  store i32 %14, i32* %2
+  br label %while_cond0
+while_end2:
+  %15 = load i32, i32* %2
+  ret i32 %15
+}
+
+define i32 @main() {
+entry3:
+  %0 = alloca i32
+  %1 = add i32 0, 48
+  %2 = add i32 0, 18
+  %3 = call i32 @gcd(i32 %1, i32 %2)
+  store i32 %3, i32* %0
+  %4 = load i32, i32* %0
+  call void @print_int(i32 %4)
+  %5 = add i32 0, 0
+  ret i32 %5
+}
+

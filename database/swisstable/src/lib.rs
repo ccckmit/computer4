@@ -71,6 +71,9 @@ struct Bucket<K, V> {
 /// assert_eq!(map.get(&1), Some(&"a"));
 /// assert_eq!(map.len(), 2);
 /// ```
+
+const TOMBSTONE: u64 = u64::MAX;
+
 #[derive(Clone)]
 pub struct SwisstableMap<K, V> {
     buckets: *mut Bucket<K, V>,
@@ -163,6 +166,14 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
                     return None;
                 }
 
+                if bucket.hash == TOMBSTONE {
+                    bucket.hash = hash;
+                    bucket.key = Some(Box::new(key));
+                    bucket.value = Some(Box::new(value));
+                    self.len += 1;
+                    return None;
+                }
+
                 if bucket.key.as_ref().map(|k| **k == key).unwrap_or(false) {
                     let old_value = bucket.value.take().unwrap();
                     bucket.value = Some(Box::new(value));
@@ -216,7 +227,6 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
         let hash = hasher.finish();
 
         let mut index = self.probe_index(hash);
-        let mut dist = 0usize;
 
         loop {
             unsafe {
@@ -226,22 +236,18 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
                     return None;
                 }
 
+                if bucket.hash == TOMBSTONE {
+                    return None;
+                }
+
                 if bucket.hash == hash && bucket.key.as_ref().map(|k| **k == *key).unwrap_or(false)
                 {
                     return bucket.value.as_ref().map(|v| &**v);
                 }
 
-                let existing_index = self.probe_index(bucket.hash);
-                let existing_dist = (index.wrapping_sub(existing_index)) & (self.capacity - 1);
-
-                if dist > existing_dist {
-                    return None;
-                }
-
-                dist += 1;
                 index = (index + 1) & (self.capacity - 1);
 
-                if dist >= self.capacity {
+                if index == self.probe_index(hash) {
                     return None;
                 }
             }
@@ -266,7 +272,6 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
         let hash = hasher.finish();
 
         let mut index = self.probe_index(hash);
-        let mut dist = 0usize;
 
         loop {
             unsafe {
@@ -276,73 +281,25 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
                     return None;
                 }
 
+                if bucket.hash == TOMBSTONE {
+                    return None;
+                }
+
                 if bucket.hash == hash && bucket.key.as_ref().map(|k| **k == *key).unwrap_or(false)
                 {
                     let result = bucket.value.take().map(|v| *v);
                     bucket.key.take();
-                    bucket.hash = 0;
+                    bucket.hash = TOMBSTONE;
                     self.len -= 1;
-
-                    self.remove_shift(index);
                     return result;
                 }
 
-                let existing_index = self.probe_index(bucket.hash);
-                let existing_dist = (index.wrapping_sub(existing_index)) & (self.capacity - 1);
-
-                if dist > existing_dist {
-                    return None;
-                }
-
-                dist += 1;
                 index = (index + 1) & (self.capacity - 1);
 
-                if dist >= self.capacity {
+                if index == self.probe_index(hash) {
                     return None;
                 }
             }
-        }
-    }
-
-    fn remove_shift(&mut self, mut hole: usize) {
-        unsafe {
-            let mut i = (hole + 1) & (self.capacity - 1);
-            let mask = self.capacity - 1;
-
-            while i != hole {
-                let bucket_i = &mut *self.buckets.add(i);
-
-                if bucket_i.key.is_none() {
-                    break;
-                }
-
-                let ideal = self.probe_index(bucket_i.hash);
-                let hash_i = bucket_i.hash;
-                let key_i = bucket_i.key.take().unwrap();
-                let value_i = bucket_i.value.take().unwrap();
-
-                let dist_to_hole = hole.wrapping_sub(ideal) & mask;
-                let dist_to_i = i.wrapping_sub(ideal) & mask;
-
-                if dist_to_hole < dist_to_i {
-                    let bucket_hole = &mut *self.buckets.add(hole);
-                    bucket_hole.hash = hash_i;
-                    bucket_hole.key = Some(key_i);
-                    bucket_hole.value = Some(value_i);
-                    hole = i;
-                } else {
-                    bucket_i.hash = hash_i;
-                    bucket_i.key = Some(key_i);
-                    bucket_i.value = Some(value_i);
-                }
-
-                i = (i + 1) & mask;
-            }
-
-            let bucket_hole = &mut *self.buckets.add(hole);
-            bucket_hole.hash = 0;
-            bucket_hole.key = None;
-            bucket_hole.value = None;
         }
     }
 
@@ -431,7 +388,7 @@ impl<K: Hash + Eq, V> SwisstableMap<K, V> {
                 core::ptr::write(
                     self.buckets.add(i),
                     Bucket {
-                        hash: 0,
+                        hash: TOMBSTONE,
                         key: None,
                         value: None,
                     },

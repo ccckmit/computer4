@@ -1,5 +1,4 @@
-use super::disk::{BlockSize, BLOCK_SIZE};
-use super::error::Result;
+use super::disk::BLOCK_SIZE;
 use std::io::{Cursor, Read};
 
 pub const MAGIC: u16 = 0xDF5C;
@@ -52,20 +51,29 @@ impl Default for Superblock {
 }
 
 impl Superblock {
-    pub fn to_bytes(&self) -> [u8; BlockSize as usize] {
-        let mut buf = [0u8; BlockSize as usize];
-        let mut cursor = Cursor::new(&mut buf);
+    pub fn to_bytes(&self) -> [u8; BLOCK_SIZE as usize] {
+        let mut buf = [0u8; BLOCK_SIZE as usize];
+        let mut pos = 0usize;
 
-        cursor.write_all(&self.magic.to_le_bytes()).unwrap();
-        cursor.write_all(&self.version.to_le_bytes()).unwrap();
-        cursor.write_all(&self.block_size.to_le_bytes()).unwrap();
-        cursor.write_all(&self.total_blocks.to_le_bytes()).unwrap();
-        cursor.write_all(&self.free_blocks.to_le_bytes()).unwrap();
-        cursor.write_all(&self.inode_count.to_le_bytes()).unwrap();
-        cursor.write_all(&self.free_inodes.to_le_bytes()).unwrap();
-        cursor.write_all(&self.root_inode.to_le_bytes()).unwrap();
-        cursor.write_all(&self.first_bitmap.to_le_bytes()).unwrap();
-        cursor.write_all(&self.block_bitmap.to_le_bytes()).unwrap();
+        buf[pos..pos + 2].copy_from_slice(&self.magic.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 2].copy_from_slice(&self.version.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 4].copy_from_slice(&self.block_size.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.total_blocks.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.free_blocks.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.inode_count.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.free_inodes.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.root_inode.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.first_bitmap.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.block_bitmap.to_le_bytes());
 
         buf
     }

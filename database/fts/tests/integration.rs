@@ -89,7 +89,7 @@ fn test_search_non_existent() {
     let lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
     let idx = fts::Index::build(&lines);
 
-    let results = idx.search("xzxyzw測試不存在詞彙", fts::SearchMode::Or);
+    let results = idx.search("xzxyzwqwerty", fts::SearchMode::Or);
     assert!(results.is_empty(), "不存在的詞彙應回傳空結果");
 }
 

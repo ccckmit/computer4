@@ -1,0 +1,35 @@
+; ModuleID = 'rustc4'
+target triple = "arm64-apple-darwin"
+
+declare i32 @printf(i8*, ...)
+
+@.print_int_fmt = private unnamed_addr constant [4 x i8] c"%d\0A\00"
+
+define void @print_int(i32 %x) {
+  %fmt = getelementptr [4 x i8], [4 x i8]* @.print_int_fmt, i64 0, i64 0
+  call i32 (i8*, ...) @printf(i8* %fmt, i32 %x)
+  ret void
+}
+
+define i32 @main() {
+entry0:
+  %0 = alloca i32
+  %1 = add i32 0, 10
+  store i32 %1, i32* %0
+  %2 = load i32, i32* %0
+  %3 = add i32 0, 5
+  %4 = icmp sgt i32 %2, %3
+  br i1 %4, label %if_then0, label %if_else1
+if_then0:
+  %5 = add i32 0, 1
+  call void @print_int(i32 %5)
+  br label %if_end2
+if_else1:
+  %6 = add i32 0, 0
+  call void @print_int(i32 %6)
+  br label %if_end2
+if_end2:
+  %7 = add i32 0, 0
+  ret i32 %7
+}
+

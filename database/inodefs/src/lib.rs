@@ -6,7 +6,7 @@ pub mod inode;
 pub mod superblock;
 pub mod bitmaps;
 
-pub use disk::{BlockSize, BLOCK_SIZE, Disk};
+pub use disk::{BLOCK_SIZE, Disk};
 pub use error::{Error, Result};
 pub use fs::{FileStat, InodeFs};
 pub use inode::{FileType, Inode, DIRECT_BLOCKS, make_mode};

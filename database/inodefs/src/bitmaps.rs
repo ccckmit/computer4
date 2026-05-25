@@ -1,5 +1,4 @@
-use super::disk::{BlockSize, BLOCK_SIZE};
-use super::error::Result;
+use super::disk::BLOCK_SIZE;
 
 pub const BITS_PER_BLOCK: u32 = BLOCK_SIZE * 8;
 

@@ -1,7 +1,6 @@
-use super::disk::BLOCK_SIZE;
-use super::error::Result;
-use super::inode::{FileType, Inode};
 use std::io::{Cursor, Read, Write};
+
+use crate::inode::FileType;
 
 pub const DIR_ENTRY_SIZE: u32 = 8;
 
@@ -119,15 +118,15 @@ impl Directory {
 
     pub fn from_inode_content(data: &[u8]) -> Self {
         let mut dir = Directory::new();
-        let mut offset = 0;
+        let mut offset: usize = 0;
 
-        while offset + 8 <= data.len() {
+        while offset + 6 <= data.len() {
             let entry_data = &data[offset..];
             if let Some(entry) = DirEntry::from_bytes(entry_data) {
                 if entry.inode != 0 {
-                    dir.entries.push(entry);
+                    dir.entries.push(entry.clone());
                 }
-                offset += 8 + entry.name.len() as u32;
+                offset += 6 + entry.name.len() as usize;
             } else {
                 break;
             }
@@ -142,13 +141,6 @@ impl Default for Directory {
         Self::new()
     }
 }
-
-pub fn add_dot_entries(dir: &mut Directory, dir_inode: u32) {
-    dir.add_entry(DirEntry::new(dir_inode, ".", FileType::Dir));
-    dir.add_entry(DirEntry::new(ROOT_INODE, "..", FileType::Dir));
-}
-
-use super::superblock::ROOT_INODE;
 
 #[cfg(test)]
 mod tests {

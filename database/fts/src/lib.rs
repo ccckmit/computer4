@@ -132,7 +132,7 @@ impl Index {
         }
 
         let total_terms = query_terms.len() as f64;
-        let results: Vec<SearchResult> = match mode {
+        let mut results: Vec<SearchResult> = match mode {
             SearchMode::And => {
                 let threshold = query_terms.len();
                 doc_scores
@@ -157,8 +157,12 @@ impl Index {
             }
         };
 
-        let mut results = results;
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap()
+                .then_with(|| a.doc_id.cmp(&b.doc_id))
+        });
         results
     }
 

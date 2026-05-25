@@ -22,7 +22,7 @@ impl Disk {
             .truncate(true)
             .open(path)?;
 
-        let disk = Self {
+        let mut disk = Self {
             file,
             path: path.to_path_buf(),
         };
@@ -43,7 +43,7 @@ impl Disk {
         })
     }
 
-    fn zero_fill(&self) -> Result<()> {
+    fn zero_fill(&mut self) -> Result<()> {
         let zeros = vec![0u8; BLOCK_SIZE as usize];
         for _ in 0..TOTAL_BLOCKS {
             self.file.write_all(&zeros)?;

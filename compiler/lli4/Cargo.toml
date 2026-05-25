@@ -1,0 +1,19 @@
+[package]
+name = "lli4"
+version = "0.1.0"
+edition = "2021"
+authors = ["Computer4 Compiler Team"]
+description = "A simple LLVM IR interpreter"
+license = "MIT"
+
+[lib]
+name = "lli4"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lli4"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1

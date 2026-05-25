@@ -1,6 +1,4 @@
 use super::disk::BLOCK_SIZE;
-use super::error::Result;
-use std::io::{Cursor, Read, Write};
 
 pub const INODE_SIZE: u32 = 128;
 pub const DIRECT_BLOCKS: usize = 10;
@@ -111,83 +109,99 @@ impl Inode {
 
     pub fn to_bytes(&self) -> [u8; INODE_SIZE as usize] {
         let mut buf = [0u8; INODE_SIZE as usize];
-        let mut cursor = Cursor::new(&mut buf);
+        let mut pos = 0usize;
 
-        cursor.write_all(&self.mode.to_le_bytes()).unwrap();
-        cursor.write_all(&self.uid.to_le_bytes()).unwrap();
-        cursor.write_all(&self.gid.to_le_bytes()).unwrap();
-        cursor.write_all(&self.size.to_le_bytes()).unwrap();
-        cursor.write_all(&self.atime.to_le_bytes()).unwrap();
-        cursor.write_all(&self.mtime.to_le_bytes()).unwrap();
-        cursor.write_all(&self.ctime.to_le_bytes()).unwrap();
-        cursor.write_all(&self.links.to_le_bytes()).unwrap();
-        cursor.write_all(&self.blocks.to_le_bytes()).unwrap();
+        buf[pos..pos + 2].copy_from_slice(&self.mode.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 2].copy_from_slice(&self.uid.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 2].copy_from_slice(&self.gid.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 4].copy_from_slice(&self.size.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.atime.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.mtime.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.ctime.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 2].copy_from_slice(&self.links.to_le_bytes());
+        pos += 2;
+        buf[pos..pos + 4].copy_from_slice(&self.blocks.to_le_bytes());
+        pos += 4;
+
         for &d in &self.direct {
-            cursor.write_all(&d.to_le_bytes()).unwrap();
+            buf[pos..pos + 4].copy_from_slice(&d.to_le_bytes());
+            pos += 4;
         }
-        cursor.write_all(&self.indirect.to_le_bytes()).unwrap();
-        cursor.write_all(&self.double_indirect.to_le_bytes()).unwrap();
-        cursor.write_all(&self.padding.to_le_bytes()).unwrap();
+
+        buf[pos..pos + 4].copy_from_slice(&self.indirect.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.double_indirect.to_le_bytes());
+        pos += 4;
+        buf[pos..pos + 4].copy_from_slice(&self.padding.to_le_bytes());
 
         buf
     }
 
     pub fn from_bytes(data: &[u8]) -> Self {
-        let mut cursor = Cursor::new(data);
+        let mut pos = 0usize;
 
-        let mut mode_buf = [0u8; 2];
-        let mut uid_buf = [0u8; 2];
-        let mut gid_buf = [0u8; 2];
-        let mut size_buf = [0u8; 4];
-        let mut atime_buf = [0u8; 4];
-        let mut mtime_buf = [0u8; 4];
-        let mut ctime_buf = [0u8; 4];
-        let mut links_buf = [0u8; 2];
-        let mut blocks_buf = [0u8; 4];
-        let mut direct_buf = [0u8; 4 * DIRECT_BLOCKS];
-        let mut indirect_buf = [0u8; 4];
-        let mut double_indirect_buf = [0u8; 4];
-        let mut padding_buf = [0u8; 4];
-
-        cursor.read_exact(&mut mode_buf).unwrap();
-        cursor.read_exact(&mut uid_buf).unwrap();
-        cursor.read_exact(&mut gid_buf).unwrap();
-        cursor.read_exact(&mut size_buf).unwrap();
-        cursor.read_exact(&mut atime_buf).unwrap();
-        cursor.read_exact(&mut mtime_buf).unwrap();
-        cursor.read_exact(&mut ctime_buf).unwrap();
-        cursor.read_exact(&mut links_buf).unwrap();
-        cursor.read_exact(&mut blocks_buf).unwrap();
-        cursor.read_exact(&mut direct_buf).unwrap();
-        cursor.read_exact(&mut indirect_buf).unwrap();
-        cursor.read_exact(&mut double_indirect_buf).unwrap();
-        cursor.read_exact(&mut padding_buf).unwrap();
+        let mode = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        pos += 2;
+        let uid = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        pos += 2;
+        let gid = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        pos += 2;
+        let size = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let atime = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let mtime = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let ctime = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let links = u16::from_le_bytes([data[pos], data[pos + 1]]);
+        pos += 2;
+        let blocks = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
 
         let mut direct = [0u32; DIRECT_BLOCKS];
         for i in 0..DIRECT_BLOCKS {
-            let offset = i * 4;
             direct[i] = u32::from_le_bytes([
-                direct_buf[offset],
-                direct_buf[offset + 1],
-                direct_buf[offset + 2],
-                direct_buf[offset + 3],
+                data[pos],
+                data[pos + 1],
+                data[pos + 2],
+                data[pos + 3],
             ]);
+            pos += 4;
         }
 
+        let indirect = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+        pos += 4;
+        let double_indirect = u32::from_le_bytes([
+            data[pos],
+            data[pos + 1],
+            data[pos + 2],
+            data[pos + 3],
+        ]);
+        pos += 4;
+        let padding = u32::from_le_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]]);
+
         Self {
-            mode: u16::from_le_bytes(mode_buf),
-            uid: u16::from_le_bytes(uid_buf),
-            gid: u16::from_le_bytes(gid_buf),
-            size: u32::from_le_bytes(size_buf),
-            atime: u32::from_le_bytes(atime_buf),
-            mtime: u32::from_le_bytes(mtime_buf),
-            ctime: u32::from_le_bytes(ctime_buf),
-            links: u16::from_le_bytes(links_buf),
-            blocks: u32::from_le_bytes(blocks_buf),
+            mode,
+            uid,
+            gid,
+            size,
+            atime,
+            mtime,
+            ctime,
+            links,
+            blocks,
             direct,
-            indirect: u32::from_le_bytes(indirect_buf),
-            double_indirect: u32::from_le_bytes(double_indirect_buf),
-            padding: u32::from_le_bytes(padding_buf),
+            indirect,
+            double_indirect,
+            padding,
         }
     }
 

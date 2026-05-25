@@ -1,0 +1,30 @@
+[package]
+name = "objdump"
+version = "0.1.0"
+edition = "2021"
+authors = ["Computer4 Compiler Team"]
+description = "A Rust objdump implementation for ELF file analysis"
+license = "MIT"
+
+[lib]
+name = "objdump_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "objdump"
+path = "src/main.rs"
+
+[dependencies]
+thiserror = "1.0"
+scroll = "0.12"
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3.10"
+assert_cmd = "2.0"
+predicates = "3.1"
+hex = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1

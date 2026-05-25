@@ -50,8 +50,14 @@ fn main() {
     }
 
     // Check membership
-    println!("\n  Contains 'banana': {}", set.contains(&String::from("banana")));
-    println!("  Contains 'grape': {}", set.contains(&String::from("grape")));
+    println!(
+        "\n  Contains 'banana': {}",
+        set.contains(&String::from("banana"))
+    );
+    println!(
+        "  Contains 'grape': {}",
+        set.contains(&String::from("grape"))
+    );
 
     // Remove an element
     let removed = set.remove(&String::from("banana"));
