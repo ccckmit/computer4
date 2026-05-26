@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 
 use browser5::css::{self, CssRule};
-use browser5::html::{self, extract_inline_css, extract_scripts};
+use browser5::html::{self, extract_inline_css, extract_link_css, extract_scripts};
 use browser5::js::JsRuntime;
 use browser5::renderer::Renderer;
 use browser5::Node;
@@ -33,10 +33,12 @@ struct Browser5 {
     history: Vec<String>,
     history_index: usize,
     image_cache: HashMap<String, egui::TextureHandle>,
+    show_console: bool,
 }
 
 impl Browser5 {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
         Browser5 {
             url_input: "index.html".to_string(),
             current_url: "index.html".to_string(),
@@ -47,6 +49,7 @@ impl Browser5 {
             history: vec!["index.html".to_string()],
             history_index: 0,
             image_cache: HashMap::new(),
+            show_console: false,
         }
     }
 
@@ -99,6 +102,14 @@ impl Browser5 {
             for s in extract_inline_css(&dom) {
                 css_text.push_str(&s);
                 css_text.push('\n');
+            }
+            let link_urls = extract_link_css(&dom, "");
+            for href in link_urls {
+                let css_path = resolve_css_path(&href, &file_path);
+                if let Ok(css_content) = fs::read_to_string(&css_path) {
+                    css_text.push_str(&css_content);
+                    css_text.push('\n');
+                }
             }
             let css_rules = css::parse_css(&css_text);
 
@@ -204,9 +215,6 @@ impl eframe::App for Browser5 {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.group(|ui| {
                         ui.set_width(ui.available_width());
-                        ui.heading("Rendered Page");
-                        ui.separator();
-
                         let mut renderer = Renderer {
                             rules: &page.css_rules,
                             js: &mut self.js_runtime,
@@ -220,16 +228,22 @@ impl eframe::App for Browser5 {
 
                     ui.add_space(10.0);
 
-                    ui.group(|ui| {
-                        ui.set_width(ui.available_width());
-                        ui.heading("JS Engine Output");
-                        ui.separator();
-                        ui.label(
-                            egui::RichText::new(&self.js_runtime.output)
-                                .code()
-                                .color(egui::Color32::LIGHT_GREEN),
-                        );
+                    ui.horizontal(|ui| {
+                        if ui.button(if self.show_console { "Console ▲" } else { "Console ▼" }).clicked() {
+                            self.show_console = !self.show_console;
+                        }
                     });
+
+                    if self.show_console {
+                        ui.group(|ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(
+                                egui::RichText::new(&self.js_runtime.output)
+                                    .code()
+                                    .color(egui::Color32::LIGHT_GREEN),
+                            );
+                        });
+                    }
                 });
 
                 if let Some(link) = clicked_link {
@@ -264,6 +278,33 @@ impl eframe::App for Browser5 {
                 });
             }
         });
+    }
+}
+
+fn resolve_css_path(href: &str, html_path: &str) -> String {
+    if href.starts_with("http://") || href.starts_with("https://") || href.starts_with("file://") {
+        return href.to_string();
+    }
+
+    if href.starts_with('/') {
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        return format!("{}/web{}", cwd, href);
+    }
+
+    let html_dir = Path::new(html_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    if html_dir.is_empty() {
+        let cwd = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        format!("{}/web/{}", cwd, href)
+    } else {
+        Path::new(&html_dir).join(href).to_string_lossy().to_string()
     }
 }
 

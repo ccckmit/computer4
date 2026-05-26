@@ -123,10 +123,10 @@ impl<'a> Renderer<'a> {
         let margin_bottom = style.margin_bottom.unwrap_or(if tag == "p" { 8.0 } else { 0.0 });
         let margin_left = style.margin_left.unwrap_or(0.0);
         let margin_right = style.margin_right.unwrap_or(0.0);
-        let padding = style.padding_top.unwrap_or(0.0)
-            .max(style.padding_bottom.unwrap_or(0.0))
-            .max(style.padding_left.unwrap_or(0.0))
-            .max(style.padding_right.unwrap_or(0.0));
+        let padding_top = style.padding_top.unwrap_or(0.0);
+        let padding_right = style.padding_right.unwrap_or(0.0);
+        let padding_bottom = style.padding_bottom.unwrap_or(0.0);
+        let padding_left = style.padding_left.unwrap_or(0.0);
 
         if margin_top > 0.0 { ui.add_space(margin_top); }
 
@@ -151,13 +151,14 @@ impl<'a> Renderer<'a> {
         let rounding = style.border_radius.unwrap_or(0.0);
         let frame = if rounding > 0.0 { frame.rounding(egui::Rounding::same(rounding)) } else { frame };
 
-        let inner_margin = if padding > 0.0 {
-            Margin::symmetric(padding, padding)
-        } else if margin_left > 0.0 || margin_right > 0.0 {
-            Margin::symmetric(margin_left.max(margin_right), 0.0)
-        } else {
-            Margin::default()
+        let inner_margin = Margin {
+            left: padding_left.max(margin_left),
+            right: padding_right.max(margin_right),
+            top: padding_top.max(margin_top),
+            bottom: padding_bottom.max(margin_bottom),
         };
+        let outer_margin_right = margin_right;
+        let outer_margin_bottom = margin_bottom;
 
         let text_align = style.text_align.as_deref();
         let width = style.width;
@@ -188,7 +189,8 @@ impl<'a> Renderer<'a> {
 
         if let Some(h) = height { ui.set_min_height(h); }
 
-        if margin_bottom > 0.0 { ui.add_space(margin_bottom); }
+        if outer_margin_bottom > 0.0 { ui.add_space(outer_margin_bottom); }
+        if outer_margin_right > 0.0 { ui.add_space(outer_margin_right); }
 
         if tag == "h1" || tag == "h2" || tag == "h3" || tag == "h4" || tag == "p" || tag == "div" || tag == "li" || tag == "hr" {
             ui.add_space(4.0);

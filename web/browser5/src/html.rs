@@ -91,7 +91,7 @@ pub fn extract_link_css(node: &Node, base_url: &str) -> Vec<String> {
                 let rel = node.attrs.get("rel").map(|s| s.as_str()).unwrap_or("");
                 let href = node.attrs.get("href").map(|s| s.as_str()).unwrap_or("");
                 if rel == "stylesheet" && !href.is_empty() {
-                    let url = if href.starts_with("http") || href.starts_with("file://") {
+                    let url = if href.starts_with("http") || href.starts_with("file://") || base_url.is_empty() {
                         href.to_string()
                     } else {
                         let base = base_url.trim_end_matches('/');

@@ -2,6 +2,7 @@ use crate::memory::Memory;
 
 pub struct Vm {
     regs: [u64; 32],
+    fregs: [u64; 32],
     pc: u64,
     is_rv32: bool,
     ecall_exit: bool,
@@ -12,7 +13,7 @@ impl Vm {
     pub fn new() -> Self {
         let mut regs = [0u64; 32];
         regs[2] = 0x0ffffff0;
-        Vm { regs, pc: 0, is_rv32: false, ecall_exit: false, exit_code: 0 }
+        Vm { regs, fregs: [0u64; 32], pc: 0, is_rv32: false, ecall_exit: false, exit_code: 0 }
     }
 
     pub fn set_pc(&mut self, pc: u64) { self.pc = pc; }
@@ -68,6 +69,13 @@ impl Vm {
             self.regs[r as usize] = if self.is_rv32 { v as u32 as u64 } else { v };
         }
     }
+
+    fn fpr_f32(&self, r: u32) -> f32 { f32::from_bits(self.fregs[r as usize] as u32) }
+    fn set_fpr_f32(&mut self, r: u32, v: f32) {
+        self.fregs[r as usize] = v.to_bits() as u64 | 0xffffffff00000000;
+    }
+    fn fpr_f64(&self, r: u32) -> f64 { f64::from_bits(self.fregs[r as usize]) }
+    fn set_fpr_f64(&mut self, r: u32, v: f64) { self.fregs[r as usize] = v.to_bits(); }
 
     fn rd(inst: u32) -> u32 { (inst >> 7) & 0x1f }
     fn rs1_val(&self, inst: u32) -> u64 { self.gpr((inst >> 15) & 0x1f) }
@@ -135,6 +143,16 @@ impl Vm {
                 };
                 self.pc = if taken { self.pc.wrapping_add(imm as u64) } else { self.pc + 4 };
             }
+            0x07 => {
+                let r = Self::rd(inst);
+                let a = self.rs1_val(inst).wrapping_add(Self::i_imm(inst) as u64);
+                match funct3 {
+                    2 => self.set_fpr_f32(r, f32::from_bits(mem.load32(a)?)),
+                    3 if !self.is_rv32 => self.set_fpr_f64(r, f64::from_bits(mem.load64(a)?)),
+                    _ => return Err(format!("bad FP load funct3 {}", funct3)),
+                }
+                self.pc += 4;
+            }
             0x03 => {
                 let r = Self::rd(inst);
                 let a = self.rs1_val(inst).wrapping_add(Self::i_imm(inst) as u64);
@@ -149,6 +167,16 @@ impl Vm {
                 self.set_gpr(r, v);
                 self.pc += 4;
             }
+            0x27 => {
+                let a = self.rs1_val(inst).wrapping_add(Self::s_imm(inst) as u64);
+                let rs2 = (inst >> 20) & 0x1f;
+                match funct3 {
+                    2 => mem.store32(a, self.fpr_f32(rs2).to_bits())?,
+                    3 if !self.is_rv32 => mem.store64(a, self.fpr_f64(rs2).to_bits())?,
+                    _ => return Err(format!("bad FP store funct3 {}", funct3)),
+                }
+                self.pc += 4;
+            }
             0x23 => {
                 let a = self.rs1_val(inst).wrapping_add(Self::s_imm(inst) as u64);
                 let v = self.rs2_val(inst);
@@ -159,6 +187,42 @@ impl Vm {
                     _ => return Err(format!("bad store funct3 {}", funct3)),
                 }
                 self.pc += 4;
+            }
+            0x2f => {
+                let funct5 = (inst >> 27) & 0x1f;
+                let r = Self::rd(inst);
+                let rs1 = (inst >> 15) & 0x1f;
+                let rs2 = (inst >> 20) & 0x1f;
+                let a = self.gpr(rs1);
+                let v = self.gpr(rs2);
+                if funct3 == 3 && self.is_rv32 {
+                    return Err("AMO 64-bit in RV32".to_string());
+                }
+                match (funct3, funct5) {
+                    (2, 0b00010) => { let x = sext32(mem.load32(a)?); self.set_gpr(r, x); self.pc += 4; }
+                    (3, 0b00010) => { let x = mem.load64(a)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b00011) => { mem.store32(a, v as u32)?; self.set_gpr(r, 0); self.pc += 4; }
+                    (3, 0b00011) => { mem.store64(a, v)?; self.set_gpr(r, 0); self.pc += 4; }
+                    (2, 0b00001) => { let x = mem.load32(a)?; mem.store32(a, x.wrapping_add(v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b00001) => { let x = mem.load64(a)?; mem.store64(a, x.wrapping_add(v))?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b00101) => { let x = mem.load32(a)?; mem.store32(a, x & (v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b00101) => { let x = mem.load64(a)?; mem.store64(a, x & v)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b01001) => { let x = mem.load32(a)?; mem.store32(a, x ^ (v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b01001) => { let x = mem.load64(a)?; mem.store64(a, x ^ v)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b01101) => { let x = mem.load32(a)?; mem.store32(a, x | (v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b01101) => { let x = mem.load64(a)?; mem.store64(a, x | v)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b00000) => { let x = mem.load32(a)?; mem.store32(a, v as u32)?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b00000) => { let x = mem.load64(a)?; mem.store64(a, v)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b10001) => { let x = mem.load32(a)?; mem.store32(a, ((x as i32).min(v as i32)) as u32)?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b10001) => { let x = mem.load64(a)?; mem.store64(a, (x as i64).min(v as i64) as u64)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b10101) => { let x = mem.load32(a)?; mem.store32(a, ((x as i32).max(v as i32)) as u32)?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b10101) => { let x = mem.load64(a)?; mem.store64(a, (x as i64).max(v as i64) as u64)?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b11001) => { let x = mem.load32(a)?; mem.store32(a, x.min(v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b11001) => { let x = mem.load64(a)?; mem.store64(a, x.min(v))?; self.set_gpr(r, x); self.pc += 4; }
+                    (2, 0b11101) => { let x = mem.load32(a)?; mem.store32(a, x.max(v as u32))?; self.set_gpr(r, sext32(x)); self.pc += 4; }
+                    (3, 0b11101) => { let x = mem.load64(a)?; mem.store64(a, x.max(v))?; self.set_gpr(r, x); self.pc += 4; }
+                    _ => return Err(format!("bad AMO funct3={} funct5={}", funct3, funct5)),
+                }
             }
             0x13 => {
                 let r = Self::rd(inst);
@@ -234,6 +298,193 @@ impl Vm {
                 self.set_gpr(r, v as i64 as u64);
                 self.pc += 4;
             }
+            0x43 | 0x47 | 0x4b | 0x4f => {
+                let r = Self::rd(inst);
+                let rs1 = (inst >> 15) & 0x1f;
+                let rs2 = (inst >> 20) & 0x1f;
+                let rs3 = (inst >> 27) & 0x1f;
+                let fmt = (inst >> 25) & 0x3;
+                if fmt == 1 && self.is_rv32 {
+                    return Err("Double-precision FMA in RV32".to_string());
+                }
+                if fmt == 0 {
+                    let a = self.fpr_f32(rs1);
+                    let b = self.fpr_f32(rs2);
+                    let c = self.fpr_f32(rs3);
+                    let t = a * b;
+                    let v = match opcode {
+                        0x43 => t + c,
+                        0x47 => t - c,
+                        0x4b => c - t,
+                        0x4f => -t - c,
+                        _ => unreachable!(),
+                    };
+                    self.set_fpr_f32(r, v);
+                } else {
+                    let a = self.fpr_f64(rs1);
+                    let b = self.fpr_f64(rs2);
+                    let c = self.fpr_f64(rs3);
+                    let t = a * b;
+                    let v = match opcode {
+                        0x43 => t + c,
+                        0x47 => t - c,
+                        0x4b => c - t,
+                        0x4f => -t - c,
+                        _ => unreachable!(),
+                    };
+                    self.set_fpr_f64(r, v);
+                }
+                self.pc += 4;
+            }
+            0x53 => {
+                let r = Self::rd(inst);
+                let rs1 = (inst >> 15) & 0x1f;
+                let rs2 = (inst >> 20) & 0x1f;
+                let funct5 = funct7 >> 2;
+                let fmt = funct7 & 0x3;
+                let rm = funct3;
+                if fmt == 1 && self.is_rv32 {
+                    return Err("Double-precision FP in RV32".to_string());
+                }
+                if fmt == 0 {
+                    match funct5 {
+                        0b00000 => { let v = self.fpr_f32(rs1) + self.fpr_f32(rs2); self.set_fpr_f32(r, v); }
+                        0b00001 => { let v = self.fpr_f32(rs1) - self.fpr_f32(rs2); self.set_fpr_f32(r, v); }
+                        0b00010 => { let v = self.fpr_f32(rs1) * self.fpr_f32(rs2); self.set_fpr_f32(r, v); }
+                        0b00011 => { let v = self.fpr_f32(rs1) / self.fpr_f32(rs2); self.set_fpr_f32(r, v); }
+                        0b01011 if rs2 == 0 => { let v = self.fpr_f32(rs1).sqrt(); self.set_fpr_f32(r, v); }
+                        0b00100 => {
+                            match rm {
+                                0 => { let s = self.fpr_f32(rs1).to_bits() & 0x7fffffff | self.fpr_f32(rs2).to_bits() & 0x80000000; self.set_fpr_f32(r, f32::from_bits(s)); }
+                                1 => { let s = self.fpr_f32(rs1).to_bits() & 0x7fffffff | !self.fpr_f32(rs2).to_bits() & 0x80000000; self.set_fpr_f32(r, f32::from_bits(s)); }
+                                2 => { self.set_fpr_f32(r, f32::from_bits(self.fpr_f32(rs1).to_bits() ^ self.fpr_f32(rs2).to_bits() & 0x80000000)); }
+                                _ => return Err(format!("bad fsgnj rm {}", rm)),
+                            }
+                        }
+                        0b00101 => {
+                            match rm {
+                                0 => { let v = self.fpr_f32(rs1).min(self.fpr_f32(rs2)); self.set_fpr_f32(r, v); }
+                                1 => { let v = self.fpr_f32(rs1).max(self.fpr_f32(rs2)); self.set_fpr_f32(r, v); }
+                                _ => return Err(format!("bad fmin/fmax rm {}", rm)),
+                            }
+                        }
+                        0b11000 => {
+                            let v = self.fpr_f32(rs1);
+                            match (rm, rs2) {
+                                (0, 0) => self.set_gpr(r, v as i32 as i64 as u64),
+                                (1, 0) => self.set_gpr(r, v as u32 as u64),
+                                (2, 0) if !self.is_rv32 => self.set_gpr(r, v as i64 as u64),
+                                (3, 0) if !self.is_rv32 => self.set_gpr(r, v as u64),
+                                _ => return Err(format!("bad fcvt.s.x rm={} rs2={}", rm, rs2)),
+                            }
+                        }
+                        0b11010 => {
+                            let x = match (rm, rs1) {
+                                (0, _) => self.gpr(rs1) as i32 as f32,
+                                (1, _) => self.gpr(rs1) as u32 as f32,
+                                (2, _) if !self.is_rv32 => self.gpr(rs1) as i64 as f32,
+                                (3, _) if !self.is_rv32 => self.gpr(rs1) as u64 as f32,
+                                _ => return Err(format!("bad fcvt.x.s rm={}", rm)),
+                            };
+                            self.set_fpr_f32(r, x);
+                        }
+                        0b10100 => {
+                            let a = self.fpr_f32(rs1);
+                            let b = self.fpr_f32(rs2);
+                            let v = match rm {
+                                0 => (a <= b) as u64,
+                                1 => (a < b) as u64,
+                                2 => (a == b) as u64,
+                                _ => return Err(format!("bad fcmp rm {}", rm)),
+                            };
+                            self.set_gpr(r, v);
+                        }
+                        0b11100 if rm == 1 && rs2 == 0 => {
+                            let bits = self.fpr_f32(rs1).to_bits();
+                            let v = fclass32(bits);
+                            self.set_gpr(r, v);
+                        }
+                        0b01000 => {
+                            if rs2 == 0 {
+                                let v = self.fpr_f64(rs1) as f32;
+                                self.set_fpr_f32(r, v);
+                            } else {
+                                return Err(format!("bad fcvt.s.d rs2={}", rs2));
+                            }
+                        }
+                        _ => return Err(format!("bad FP funct5={} rs2={} rm={}", funct5, rs2, rm)),
+                    }
+                } else {
+                    match funct5 {
+                        0b00000 => { let v = self.fpr_f64(rs1) + self.fpr_f64(rs2); self.set_fpr_f64(r, v); }
+                        0b00001 => { let v = self.fpr_f64(rs1) - self.fpr_f64(rs2); self.set_fpr_f64(r, v); }
+                        0b00010 => { let v = self.fpr_f64(rs1) * self.fpr_f64(rs2); self.set_fpr_f64(r, v); }
+                        0b00011 => { let v = self.fpr_f64(rs1) / self.fpr_f64(rs2); self.set_fpr_f64(r, v); }
+                        0b01011 if rs2 == 0 => { let v = self.fpr_f64(rs1).sqrt(); self.set_fpr_f64(r, v); }
+                        0b00100 => {
+                            match rm {
+                                0 => { let s = self.fpr_f64(rs1).to_bits() & 0x7fffffffffffffff | self.fpr_f64(rs2).to_bits() & 0x8000000000000000; self.set_fpr_f64(r, f64::from_bits(s)); }
+                                1 => { let s = self.fpr_f64(rs1).to_bits() & 0x7fffffffffffffff | !self.fpr_f64(rs2).to_bits() & 0x8000000000000000; self.set_fpr_f64(r, f64::from_bits(s)); }
+                                2 => { self.set_fpr_f64(r, f64::from_bits(self.fpr_f64(rs1).to_bits() ^ self.fpr_f64(rs2).to_bits() & 0x8000000000000000)); }
+                                _ => return Err(format!("bad fsgnj.d rm {}", rm)),
+                            }
+                        }
+                        0b00101 => {
+                            match rm {
+                                0 => { let v = self.fpr_f64(rs1).min(self.fpr_f64(rs2)); self.set_fpr_f64(r, v); }
+                                1 => { let v = self.fpr_f64(rs1).max(self.fpr_f64(rs2)); self.set_fpr_f64(r, v); }
+                                _ => return Err(format!("bad fmin/fmax.d rm {}", rm)),
+                            }
+                        }
+                        0b11000 => {
+                            let v = self.fpr_f64(rs1);
+                            match (rm, rs2) {
+                                (0, 0) => self.set_gpr(r, v as i32 as i64 as u64),
+                                (1, 0) => self.set_gpr(r, (v as u64) as u32 as u64),
+                                (2, 0) if !self.is_rv32 => self.set_gpr(r, v as i64 as u64),
+                                (3, 0) if !self.is_rv32 => self.set_gpr(r, v as u64),
+                                _ => return Err(format!("bad fcvt.d.x rm={} rs2={}", rm, rs2)),
+                            }
+                        }
+                        0b11010 => {
+                            let x = match (rm, rs1) {
+                                (0, _) => self.gpr(rs1) as i32 as f64,
+                                (1, _) => self.gpr(rs1) as u32 as f64,
+                                (2, _) if !self.is_rv32 => self.gpr(rs1) as i64 as f64,
+                                (3, _) if !self.is_rv32 => self.gpr(rs1) as u64 as f64,
+                                _ => return Err(format!("bad fcvt.x.d rm={}", rm)),
+                            };
+                            self.set_fpr_f64(r, x);
+                        }
+                        0b10100 => {
+                            let a = self.fpr_f64(rs1);
+                            let b = self.fpr_f64(rs2);
+                            let v = match rm {
+                                0 => (a <= b) as u64,
+                                1 => (a < b) as u64,
+                                2 => (a == b) as u64,
+                                _ => return Err(format!("bad fcmp.d rm {}", rm)),
+                            };
+                            self.set_gpr(r, v);
+                        }
+                        0b11100 if rm == 1 && rs2 == 0 => {
+                            let bits = self.fpr_f64(rs1).to_bits();
+                            let v = fclass64(bits);
+                            self.set_gpr(r, v);
+                        }
+                        0b01000 => {
+                            if rs2 == 1 {
+                                let v = self.fpr_f32(rs1) as f64;
+                                self.set_fpr_f64(r, v);
+                            } else {
+                                return Err(format!("bad fcvt.d.s rs2={}", rs2));
+                            }
+                        }
+                        _ => return Err(format!("bad FP funct5={} rs2={} rm={}", funct5, rs2, rm)),
+                    }
+                }
+                self.pc += 4;
+            }
             0x0f => { self.pc += 4; }
             0x73 => {
                 if funct3 == 0 {
@@ -252,8 +503,8 @@ impl Vm {
         let v = match funct3 {
             0 => rs1.wrapping_mul(rs2),
             1 => ((rs1 as i128).wrapping_mul(rs2 as i128) >> 64) as u64,
-            2 => ((rs1 as u128).wrapping_mul(rs2 as u128) >> 64) as u64,
-            3 => ((rs1 as i128).wrapping_mul(rs2 as i128) >> 64) as u64,
+            2 => ((rs1 as i128).wrapping_mul(rs2 as u128 as i128) >> 64) as u64,
+            3 => ((rs1 as u128).wrapping_mul(rs2 as u128) >> 64) as u64,
             4 => if rs2 == 0 { 0 } else { (rs1 as i64).wrapping_div(rs2 as i64) as u64 },
             5 => if rs2 == 0 { u64::MAX } else { rs1 / rs2 },
             6 => if rs2 == 0 { rs1 } else { (rs1 as i64).wrapping_rem(rs2 as i64) as u64 },
@@ -318,7 +569,18 @@ impl Vm {
                     if imm != 0 { self.set_gpr(rdp, self.gpr(2) + imm); }
                     self.pc += 2;
                 }
-                1 => { self.pc += 2; }
+                1 => {
+                    if self.is_rv32 {
+                        let imm = (((inst >> 5) & 1) as u64) << 6 | (((inst >> 6) & 1) as u64) << 5 | (((inst >> 11) & 1) as u64) << 4 | (((inst >> 10) & 1) as u64) << 3 | (((inst >> 12) & 1) as u64) << 2;
+                        let v = f32::from_bits(mem.load32(self.gpr(rs1p) + imm)?);
+                        self.set_fpr_f32(rdp, v);
+                    } else {
+                        let imm = (((inst >> 5) & 0x3) << 6 | ((inst >> 10) & 0x7) << 3) as u64;
+                        let v = f64::from_bits(mem.load64(self.gpr(rs1p) + imm)?);
+                        self.set_fpr_f64(rdp, v);
+                    }
+                    self.pc += 2;
+                }
                 2 => {
                     let imm = (((inst >> 5) & 0x38) | ((inst >> 1) & 0x4) | ((inst >> 7) & 0x4)) as u64;
                     self.set_gpr(rdp, sext32(mem.load32(self.gpr(rs1p) + imm)?));
@@ -329,7 +591,18 @@ impl Vm {
                     self.set_gpr(rdp, mem.load64(self.gpr(rs1p) + imm)?);
                     self.pc += 2;
                 }
-                4 | 5 => { self.pc += 2; }
+                4 | 5 => {
+                    if funct3 == 5 {
+                        if self.is_rv32 {
+                            let imm = (((inst >> 5) & 1) as u64) << 6 | (((inst >> 6) & 1) as u64) << 5 | (((inst >> 11) & 1) as u64) << 4 | (((inst >> 10) & 1) as u64) << 3 | (((inst >> 12) & 1) as u64) << 2;
+                            mem.store32(self.gpr(rs1p) + imm, self.fpr_f32(rs2p).to_bits())?;
+                        } else {
+                            let imm = (((inst >> 5) & 0x3) << 6 | ((inst >> 10) & 0x7) << 3) as u64;
+                            mem.store64(self.gpr(rs1p) + imm, self.fpr_f64(rs2p).to_bits())?;
+                        }
+                    }
+                    self.pc += 2;
+                }
                 6 => {
                     let imm = (((inst >> 5) & 0x38) | ((inst >> 1) & 0x4) | ((inst >> 7) & 0x4)) as u64;
                     mem.store32(self.gpr(rs1p) + imm, self.gpr(rs2p) as u32)?;
@@ -408,7 +681,18 @@ impl Vm {
                     if rd != 0 { self.set_gpr(rd, self.gpr(rd) << sh); }
                     self.pc += 2;
                 }
-                1 => { self.pc += 2; }
+                1 => {
+                    if self.is_rv32 {
+                        let imm = (((inst >> 10) & 0x1c) | ((inst >> 1) & 0x20) | ((inst >> 4) & 0x4) | ((inst >> 3) & 0x3)) as u64;
+                        let v = f32::from_bits(mem.load32(self.gpr(2) + imm)?);
+                        if rd != 0 { self.set_fpr_f32(rd, v); }
+                    } else {
+                        let imm = (((inst >> 7) & 0x20) | ((inst >> 2) & 0x38) | ((inst >> 4) & 0x7)) as u64;
+                        let v = f64::from_bits(mem.load64(self.gpr(2) + imm)?);
+                        if rd != 0 { self.set_fpr_f64(rd, v); }
+                    }
+                    self.pc += 2;
+                }
                 2 => {
                     let imm = (((inst >> 7) & 0x20) | ((inst >> 2) & 0x1c) | ((inst >> 4) & 0x4)) as u64;
                     let v = sext32(mem.load32(self.gpr(2) + imm)?);
@@ -449,7 +733,16 @@ impl Vm {
                         _ => { self.pc += 2; }
                     }
                 }
-                5 => { self.pc += 2; }
+                5 => {
+                    if self.is_rv32 {
+                        let imm = (((inst >> 10) & 0x1c) | ((inst >> 1) & 0x20) | ((inst >> 4) & 0x4) | ((inst >> 3) & 0x3)) as u64;
+                        mem.store32(self.gpr(2) + imm, self.fpr_f32(rs2).to_bits())?;
+                    } else {
+                        let imm = (((inst >> 7) & 0x3e) | ((inst >> 2) & 0x1f)) as u64;
+                        mem.store64(self.gpr(2) + imm, self.fpr_f64(rs2).to_bits())?;
+                    }
+                    self.pc += 2;
+                }
                 6 => {
                     let imm = (((inst >> 7) & 0x3c) | ((inst >> 2) & 0x3)) as u64;
                     mem.store32(self.gpr(2) + imm, self.gpr(rs2) as u32)?;
@@ -482,6 +775,40 @@ fn cj_imm(inst: u16) -> u64 {
     v |= (((inst >> 9) & 0x3) as u64) << 8;
     v |= (((inst >> 8) & 1) as u64) << 10;
     if inst & 0x1000 != 0 { v.wrapping_sub(2048) } else { v }
+}
+
+fn fclass32(bits: u32) -> u64 {
+    if bits == 0 { return 1 << 4; }               // positive zero
+    if bits == 0x80000000 { return 1 << 3; }      // negative zero
+    if bits == 0x7f800000 { return 1 << 0; }      // +inf
+    if bits == 0xff800000 { return 1 << 7; }      // -inf
+    let exp = (bits >> 23) & 0xff;
+    let mant = bits & 0x7fffff;
+    if exp == 0xff && mant != 0 {
+        if bits & 0x80000000 != 0 { return 1 << 9; } // signaling NaN
+        return 1 << 8;                                // quiet NaN
+    }
+    let sign = (bits >> 31) & 1;
+    if exp == 0 && mant == 0 { return if sign == 0 { 1 << 4 } else { 1 << 3 }; }
+    if sign != 0 { return 1 << 6; }                  // negative normal
+    return 1 << 2;                                    // positive normal
+}
+
+fn fclass64(bits: u64) -> u64 {
+    if bits == 0 { return 1 << 4; }
+    if bits == 0x8000000000000000 { return 1 << 3; }
+    if bits == 0x7ff0000000000000 { return 1 << 0; }
+    if bits == 0xfff0000000000000 { return 1 << 7; }
+    let exp = (bits >> 52) & 0x7ff;
+    let mant = bits & 0xfffffffffffff;
+    if exp == 0x7ff && mant != 0 {
+        if bits & 0x8000000000000000 != 0 { return 1 << 9; }
+        return 1 << 8;
+    }
+    let sign = (bits >> 63) & 1;
+    if exp == 0 && mant == 0 { return if sign == 0 { 1 << 4 } else { 1 << 3 }; }
+    if sign != 0 { return 1 << 6; }
+    return 1 << 2;
 }
 
 fn cb_imm(inst: u16) -> u64 {

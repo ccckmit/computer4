@@ -3,7 +3,7 @@ set -x
 
 # Build examples
 for ex in hello fact fib sum; do
-    rustc --target riscv64imac-unknown-none-elf --emit obj -C opt-level=z -C overflow-checks=off examples/$ex.rs -o examples/$ex.o
+    rustc --target riscv64imac-unknown-none-elf --emit asm,obj -C opt-level=z -C overflow-checks=off examples/$ex.rs -o examples/$ex.o
     if [ $? -ne 0 ]; then
         echo "Failed to compile examples/$ex.rs"
         exit 1
