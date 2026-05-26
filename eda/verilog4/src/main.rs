@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use verilog4::{parse_verilog, gen_ruhdl};
+use verilog4::{parse_file, gen_ruhdl};
 
 const RUHDL_SRC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ruhdl/src/lib.rs");
 const CACHE_DIR: &str = "/tmp/ruhdl_rlib";
@@ -43,9 +43,7 @@ fn run_rhdl(input_path: &str) {
 }
 
 fn convert_verilog(input_path: &str, output_arg: &str) {
-    let input = fs::read_to_string(input_path)
-        .expect(&format!("Failed to read input file: {}", input_path));
-    let modules = parse_verilog(&input);
+    let modules = parse_file(input_path);
     let rust_code = gen_ruhdl(&modules);
     let output_path = if output_arg.ends_with(".rhdl") || output_arg.ends_with(".rs") {
         // treat as output file path

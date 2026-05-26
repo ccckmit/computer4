@@ -28,3 +28,5 @@ grep -c "Task0: Created" output.txt && echo "Task0: OK"
 grep -c "Task1: Created" output.txt && echo "Task1: OK"
 grep -c "timer_handler" output.txt && echo "Preemptive timer: OK"
 grep "counter before" output.txt | head -5
+
+rm *.o

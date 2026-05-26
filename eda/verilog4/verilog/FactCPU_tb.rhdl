@@ -1,0 +1,108 @@
+use ruhdl::prelude::*;
+
+#[derive(Debug, Clone)]
+pub struct FactCPU {
+    pub clk: WireRef,
+    pub rst: WireRef,
+    pub result: Vec<WireRef>,
+    pub done: WireRef,
+    r: Vec<WireRef>,
+    sum: Vec<WireRef>,
+    i: Vec<WireRef>,
+    j: Vec<WireRef>,
+}
+
+impl FactCPU {
+    pub fn new(
+        clk: WireRef,
+        rst: WireRef,
+        result: Vec<WireRef>,
+        done: WireRef,
+    ) -> Self {
+        let r = bus("r", 16);
+        let sum = bus("sum", 16);
+        let i = bus("i", 4);
+        let j = bus("j", 4);
+        FactCPU {
+            clk: clk.clone(),
+            rst: rst.clone(),
+            result: result.clone(),
+            done: done.clone(),
+            r: r.clone(),
+            sum: sum.clone(),
+            i: i.clone(),
+            j: j.clone(),
+        }
+    }
+
+    pub fn eval(&mut self) {
+    if get(&self.rst) != Level::L {
+        u16_to_bus(&self.result, (0 & 65535u64) as u16);
+        if get(&self.done) != Level::L { set(&self.done, Level::L); }
+    } else {
+        u16_to_bus(&self.r, (1 & 65535u64) as u16);
+        u16_to_bus(&self.i, (2 & 15u64) as u16);
+        while if (bus_to_u16(&self.i) as u64) <= (5) { Level::H } else { Level::L } != Level::L {
+            u16_to_bus(&self.sum, (0 & 65535u64) as u16);
+            u16_to_bus(&self.j, (0 & 15u64) as u16);
+            while if (bus_to_u16(&self.j) as u64) < (bus_to_u16(&self.i) as u64) { Level::H } else { Level::L } != Level::L {
+                u16_to_bus(&self.sum, ((bus_to_u16(&self.sum) as u64 + bus_to_u16(&self.r) as u64) & 65535u64 & 65535u64) as u16);
+                u16_to_bus(&self.j, ((bus_to_u16(&self.j) as u64 + 1) & 15u64 & 15u64) as u16);
+            }
+            u16_to_bus(&self.r, (bus_to_u16(&self.sum) as u64 & 65535u64) as u16);
+            u16_to_bus(&self.i, ((bus_to_u16(&self.i) as u64 + 1) & 15u64 & 15u64) as u16);
+        }
+        u16_to_bus(&self.result, (bus_to_u16(&self.r) as u64 & 65535u64) as u16);
+        if get(&self.done) != Level::H { set(&self.done, Level::H); }
+    }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FactCPUTb {
+    result: Vec<WireRef>,
+    done: WireRef,
+    clk: WireRef,
+    rst: WireRef,
+    dut: FactCPU,
+}
+
+impl FactCPUTb {
+    pub fn new(
+    ) -> Self {
+        let result = bus("result", 16);
+        let done = wire("done");
+        let clk = wire("clk");
+        let rst = wire("rst");
+        FactCPUTb {
+            result: result.clone(),
+            done: done.clone(),
+            clk: clk.clone(),
+            rst: rst.clone(),
+            dut: FactCPU::new(clk.clone(), rst.clone(), result.clone(), done.clone()),
+        }
+    }
+
+    pub fn eval(&mut self) {
+        self.dut.eval();
+    }
+    pub fn run(&mut self) {
+        println!("=== FactCPU (5!) Testbench ===");
+        if get(&self.rst) != Level::H { set(&self.rst, Level::H); }
+        self.eval();
+        if get(&self.rst) != Level::L { set(&self.rst, Level::L); }
+        self.eval();
+        println!("5! = {}", bus_to_u16(&self.result) as u64);
+        if if (bus_to_u16(&self.result) as u64) == (120) { Level::H } else { Level::L } != Level::L {
+            println!("PASS");
+        } else {
+            println!("FAIL: expected 120, got {}", bus_to_u16(&self.result) as u64);
+        }
+        return;
+    }
+}
+
+fn main() {
+    let mut tb = FactCPUTb::new();
+    tb.run();
+}

@@ -430,8 +430,14 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
 fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
     match expr {
         Expr::Number(n) => {
-            if n.value == 0 { "Level::L".to_string() }
-            else { "Level::H".to_string() }
+            let w = expr_width(expr, sizes);
+            if w > 1 {
+                format!("({} & {}) as u64", n.value, mask(w))
+            } else if n.value == 0 {
+                "Level::L".to_string()
+            } else {
+                "Level::H".to_string()
+            }
         }
         Expr::Ident(name) => {
             let n = to_snake(name);
@@ -458,7 +464,7 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
                 }
                 BinaryOp::Sub => {
                     if w > 1 {
-                        format!("({}.wrapping_sub({})) & {}", l, r, mask(w))
+                        format!("(({}).wrapping_sub({})) & {}", l, r, mask(w))
                     } else {
                         format!("{}.xor({})", l, r)
                     }
@@ -472,12 +478,12 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
                 BinaryOp::BitXor => {
                     if w > 1 { format!("{} ^ {}", l, r) } else { format!("{}.xor({})", l, r) }
                 }
-                BinaryOp::Lt => format!("if {} < {} {{ 1u16 }} else {{ 0u16 }}", l, r),
-                BinaryOp::Leq => format!("if {} <= {} {{ 1u16 }} else {{ 0u16 }}", l, r),
-                BinaryOp::Gt => format!("if {} > {} {{ 1u16 }} else {{ 0u16 }}", l, r),
-                BinaryOp::Geq => format!("if {} >= {} {{ 1u16 }} else {{ 0u16 }}", l, r),
-                BinaryOp::Eq => format!("if {} == {} {{ 1u16 }} else {{ 0u16 }}", l, r),
-                BinaryOp::Neq => format!("if {} != {} {{ 1u16 }} else {{ 0u16 }}", l, r),
+                BinaryOp::Lt => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) < ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Leq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) <= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Gt => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) > ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Geq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) >= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Eq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) == ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Neq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) != ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
                 BinaryOp::Shl => format!("{} << {}", l, r),
                 BinaryOp::Shr => format!("{} >> {}", l, r),
                 BinaryOp::Sshl => format!("{} << {}", l, r),
@@ -600,19 +606,19 @@ fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             let w = std::cmp::max(lw, rw);
             match op {
                 BinaryOp::Add => format!("({} + {}) & {}", l, r, mask(w)),
-                BinaryOp::Sub => format!("({}.wrapping_sub({})) & {}", l, r, mask(w)),
+                BinaryOp::Sub => format!("(({}).wrapping_sub({})) & {}", l, r, mask(w)),
                 BinaryOp::Mul => format!("({} * {}) & {}", l, r, mask(w)),
                 BinaryOp::Div => format!("({} / {})", l, r),
                 BinaryOp::Mod => format!("({} % {})", l, r),
                 BinaryOp::BitAnd => format!("({} & {})", l, r),
                 BinaryOp::BitOr => format!("({} | {})", l, r),
                 BinaryOp::BitXor => format!("({} ^ {})", l, r),
-                BinaryOp::Lt => format!("if {} < {} {{ 1 }} else {{ 0 }}", l, r),
-                BinaryOp::Leq => format!("if {} <= {} {{ 1 }} else {{ 0 }}", l, r),
-                BinaryOp::Gt => format!("if {} > {} {{ 1 }} else {{ 0 }}", l, r),
-                BinaryOp::Geq => format!("if {} >= {} {{ 1 }} else {{ 0 }}", l, r),
-                BinaryOp::Eq => format!("if {} == {} {{ 1 }} else {{ 0 }}", l, r),
-                BinaryOp::Neq => format!("if {} != {} {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Lt => format!("if ({}) < ({}) {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Leq => format!("if ({}) <= ({}) {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Gt => format!("if ({}) > ({}) {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Geq => format!("if ({}) >= ({}) {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Eq => format!("if ({}) == ({}) {{ 1 }} else {{ 0 }}", l, r),
+                BinaryOp::Neq => format!("if ({}) != ({}) {{ 1 }} else {{ 0 }}", l, r),
                 BinaryOp::Shl => format!("({} << {})", l, r),
                 BinaryOp::Shr => format!("({} >> {})", l, r),
                 BinaryOp::Sshl => format!("({} << {})", l, r),

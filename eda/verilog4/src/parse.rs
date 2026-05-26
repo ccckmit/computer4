@@ -115,6 +115,8 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         if c == '}' { toks.push(Token::RBrace); i += 1; continue; }
         if c == '@' { toks.push(Token::At); i += 1; continue; }
         if c == '#' { toks.push(Token::Hash); i += 1; continue; }
+        if c == '<' { toks.push(Token::Lt); i += 1; continue; }
+        if c == '>' { toks.push(Token::Gt); i += 1; continue; }
         if c == '=' { toks.push(Token::AssignOp); i += 1; continue; }
         if c == '"' {
             i += 1;
