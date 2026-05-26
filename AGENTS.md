@@ -31,7 +31,8 @@ A DIY computer system monorepo. Each subdirectory is an **independent Rust crate
 | `tool/lz4/` | LZ4 compression (edition 2024) | — |
 | `tool/regex4/` | Regex engine (standalone `rustc`, no Cargo) | `regex4.rs` |
 | `tool/vi4/` | Terminal text editor (crossterm) | `src/main.rs` |
-| `eda/ruhdl/` | Hardware description (empty) | — |
+| `eda/ruhdl/` | Hardware description (gates, adder, seq, mux, sim, CPU, viz) | `src/lib.rs` — `prelude` re-export |
+| `eda/verilog4/` | Verilog → ruHDL converter | `src/lib.rs` — `parse_verilog`, `gen_ruhdl` |
 
 ## Commands
 
