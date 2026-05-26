@@ -1,36 +1,30 @@
 #!/bin/bash
-set -e
+set -x
 cd /Users/Shared/ccc/project/computer4/os/mini-riscv-os
 
-TARGET=riscv32imac-unknown-none-elf
-DEPS=target/$TARGET/release/deps
+echo "=== Building Rust mini-riscv-os ==="
 
 # Build Rust lib
-cargo build --release --target $TARGET 2>&1
+cargo build --release --target riscv32imac-unknown-none-elf 2>&1 | grep -E "error|warning|Finished"
 
-# Find and extract object from rlib
-RLIB=$(ls $DEPS/libmini_riscv_os-*.rlib 2>/dev/null | head -1)
-if [ -z "$RLIB" ]; then
-    echo "No rlib found"
-    exit 1
-fi
-
-# Extract object files from rlib
-ar x $RLIB
-
-# Find the object file
-OBJ=$(ls *.o 2>/dev/null | head -1)
-if [ -z "$OBJ" ]; then
-    echo "No object file extracted"
-    exit 1
-fi
+# Extract object from library
+riscv64-unknown-elf-ar x target/riscv32imac-unknown-none-elf/release/deps/libmini_riscv_os-3008861c6995acbb.a
 
 # Compile assembly
 riscv64-unknown-elf-gcc -nostdlib -mcmodel=medany -march=rv32ima_zicsr -mabi=ilp32 -c start.s -o start.o
 riscv64-unknown-elf-gcc -nostdlib -mcmodel=medany -march=rv32ima_zicsr -mabi=ilp32 -c sys.s -o sys.o
 
-# Link everything
-riscv64-unknown-elf-gcc -nostdlib -mcmodel=medany -march=rv32ima_zicsr -mabi=ilp32 -T os.ld -o os.elf start.o sys.o $OBJ
+# Link
+riscv64-unknown-elf-gcc -nostdlib -mcmodel=medany -march=rv32ima_zicsr -mabi=ilp32 -T os.ld -o os.elf start.o sys.o libmini_riscv_os-3008861c6995acbb.a
 
-echo "Build complete: os.elf"
+echo "=== Build complete ==="
 ls -la os.elf
+
+echo "=== Running QEMU ==="
+timeout 20 qemu-system-riscv32 -nographic -smp 4 -machine virt -bios none -kernel os.elf 2>&1 | tee output.txt
+
+echo "=== Checking output ==="
+grep -c "Task0: Created" output.txt && echo "Task0: OK"
+grep -c "Task1: Created" output.txt && echo "Task1: OK"
+grep -c "timer_handler" output.txt && echo "Preemptive timer: OK"
+grep "counter before" output.txt | head -5

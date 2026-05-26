@@ -1,5 +1,4 @@
 #![no_std]
-#![no_main]
 
 mod os_code;
 
