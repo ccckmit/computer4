@@ -105,6 +105,7 @@ fn set_mtimecmp(hartid: usize, val: u64) {
     unsafe {
         let hi = clint_mtimecmp(hartid) + 4;
         let lo = clint_mtimecmp(hartid);
+        *(lo as *mut u32) = 0xFFFFFFFF;
         *(hi as *mut u32) = (val >> 32) as u32;
         *(lo as *mut u32) = (val & 0xFFFFFFFF) as u32;
     }

@@ -1,0 +1,15 @@
+[package]
+name = "keygen"
+version = "0.1.0"
+edition = "2021"
+description = "SSL/TLS key and certificate generator"
+
+[dependencies]
+rcgen = "0.11"
+pem = "2"
+clap = { version = "4", features = ["derive"] }
+rsa = "0.9"
+p256 = { version = "0.13", features = ["ecdsa"] }
+p384 = { version = "0.13", features = ["ecdsa"] }
+pkcs8 = "0.10"
+rand = "0.8"

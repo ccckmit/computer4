@@ -1,0 +1,10 @@
+<html>
+  <head>
+    <title>My Page</title>
+  </head>
+  <body>
+    <h1 id="main">Hello World</h1>
+    <p>This is a <b>simple</b> XML document.</p>
+    <br/>
+  </body>
+</html>

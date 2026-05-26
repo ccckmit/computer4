@@ -1,0 +1,12 @@
+<catalog>
+  <book id="b101" lang="en">
+    <title>Learning XML</title>
+    <author>Erik T. Ray</author>
+    <price currency="USD">39.95</price>
+  </book>
+  <book id="b102" lang="zh">
+    <title>XML 入門</title>
+    <author>張三</author>
+    <price currency="TWD">599</price>
+  </book>
+</catalog>
