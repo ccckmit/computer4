@@ -1,0 +1,12 @@
+[package]
+name = "browser5"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = "0.27"
+scraper = "0.19"
+ego-tree = "0.6"
+image = "0.24"
+xdom4 = { path = "../xdom4" }
+js4 = { path = "../js4" }

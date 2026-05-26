@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Browser5 Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>Browser5</h1>
+    <p>Welcome to <strong>Browser5</strong> — a minimal web browser built with Rust + egui, powered by a custom HTML/CSS engine and the js4 JavaScript runtime.</p>
+
+    <div class="card">
+        <h2>Demo Pages</h2>
+        <p>Click the links below to try interactive demos:</p>
+        <p>
+            <a href="counter.html">Counter</a>
+            <a href="calc.html">Calculator</a>
+            <a href="todo.html">Todo List</a>
+            <a href="media.html">Media</a>
+        </p>
+    </div>
+
+    <div class="card">
+        <h2>Features</h2>
+        <ul>
+            <li><strong>HTML</strong> rendering via scraper/ego-tree DOM</li>
+            <li><strong>CSS</strong> styling — colors, fonts, borders, backgrounds, margins, padding, and rounded corners</li>
+            <li><strong>JavaScript</strong> execution via js4 engine with <code>data-js-var</code> variable binding</li>
+            <li><strong>Images</strong> — PNG, JPEG, GIF, and more via the <code>image</code> crate</li>
+            <li><strong>Canvas</strong> element with dimension display</li>
+        </ul>
+    </div>
+
+    <div class="highlight">
+        <p>This page demonstrates the full rendering pipeline: HTML parsing, CSS selector matching, style computation, and interactive UI. Click any demo above to see JS-driven interactivity.</p>
+    </div>
+
+    <h2>Inline Style Showcase</h2>
+    <p style="color: #e63946;">Red text via inline style</p>
+    <p style="color: #4361ee; font-size: 20px;">Blue text at 20px</p>
+    <p><span style="color: #2ec4b6; font-weight: bold;">Teal bold</span> mixed with <span style="color: #e63946;">red</span> <span style="color: #f4a261;">orange</span> inline spans</p>
+
+    <div style="background-color: #edf2ff; padding: 16px 20px; border: 2px solid #4361ee; border-radius: 10px;">
+        <p>Styled div with blue background, padding, border, and rounded corners.</p>
+    </div>
+
+    <script>
+        console.log("Welcome to Browser5!");
+        console.log("CSS and JS working together.");
+    </script>
+</body>
+</html>

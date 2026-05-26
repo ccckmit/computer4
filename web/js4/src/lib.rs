@@ -8,8 +8,8 @@ pub enum Token {
     Let, Function, Return, If, Else, While, Try, Catch, Throw, Break, Continue,
     True, False, Null, Undefined,
     Identifier(String), Number(f64), StringLiteral(String),
-    Plus, Minus, Star, Slash, Percent, Assign, Eq, Lt, Gt, AmperAmper, PipePipe, Bang,
-    Comma, Dot, Semicolon, Colon, LParen, RParen, LBrace, RBrace, LBracket, RBracket,
+    Plus, Minus, Star, Slash, Percent, Assign, Eq, Lt, Gt, LtEq, GtEq, NotEq, StrictEq, StrictNotEq, AmperAmper, PipePipe, Bang,
+    Comma, Dot, Semicolon, Colon, Question, LParen, RParen, LBrace, RBrace, LBracket, RBracket,
     Eof,
 }
 
@@ -51,13 +51,22 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             };
             tokens.push(tok); continue;
         }
-        if c == '=' && i + 1 < chars.len() && chars[i + 1] == '=' { tokens.push(Token::Eq); i += 2; continue; }
+        if c == '=' && i + 1 < chars.len() && chars[i + 1] == '=' {
+            if i + 2 < chars.len() && chars[i + 2] == '=' { tokens.push(Token::StrictEq); i += 3; continue; }
+            tokens.push(Token::Eq); i += 2; continue;
+        }
+        if c == '!' && i + 1 < chars.len() && chars[i + 1] == '=' {
+            if i + 2 < chars.len() && chars[i + 2] == '=' { tokens.push(Token::StrictNotEq); i += 3; continue; }
+            tokens.push(Token::NotEq); i += 2; continue;
+        }
+        if c == '<' && i + 1 < chars.len() && chars[i + 1] == '=' { tokens.push(Token::LtEq); i += 2; continue; }
+        if c == '>' && i + 1 < chars.len() && chars[i + 1] == '=' { tokens.push(Token::GtEq); i += 2; continue; }
         if c == '&' && i + 1 < chars.len() && chars[i + 1] == '&' { tokens.push(Token::AmperAmper); i += 2; continue; }
         if c == '|' && i + 1 < chars.len() && chars[i + 1] == '|' { tokens.push(Token::PipePipe); i += 2; continue; }
         let tok = match c {
             '+' => Token::Plus, '-' => Token::Minus, '*' => Token::Star, '/' => Token::Slash, '%' => Token::Percent,
             '=' => Token::Assign, '<' => Token::Lt, '>' => Token::Gt, '!' => Token::Bang, ',' => Token::Comma,
-            '.' => Token::Dot, ';' => Token::Semicolon, ':' => Token::Colon, '(' => Token::LParen, ')' => Token::RParen,
+            '.' => Token::Dot, ';' => Token::Semicolon, ':' => Token::Colon, '?' => Token::Question, '(' => Token::LParen, ')' => Token::RParen,
             '{' => Token::LBrace, '}' => Token::RBrace, '[' => Token::LBracket, ']' => Token::RBracket,
             _ => { i += 1; continue; }
         };
@@ -72,7 +81,7 @@ pub enum Value {
     Array(Rc<RefCell<Vec<Value>>>),
     Object(Rc<RefCell<HashMap<String, Value>>>),
     Function { params: Vec<String>, body: Vec<Stmt>, env: Rc<RefCell<Environment>> },
-    Builtin(fn(Vec<Value>) -> Value),
+    Builtin(Rc<dyn Fn(Vec<Value>) -> Value>),
 }
 
 impl Value {
@@ -131,8 +140,8 @@ impl Environment {
 #[derive(Clone)]
 pub enum Expr {
     Literal(Value), Variable(String), Array(Vec<Expr>), Object(Vec<(String, Expr)>),
-    Assign(Box<Expr>, Box<Expr>), Logical(Box<Expr>, String, Box<Expr>),
-    Binary(Box<Expr>, String, Box<Expr>), Unary(String, Box<Expr>),
+    Assign(Box<Expr>, Box<Expr>), Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
+    Logical(Box<Expr>, String, Box<Expr>), Binary(Box<Expr>, String, Box<Expr>), Unary(String, Box<Expr>),
     Call(Box<Expr>, Vec<Expr>), Member(Box<Expr>, String), Index(Box<Expr>, Box<Expr>),
 }
 
@@ -147,7 +156,7 @@ pub enum Stmt {
 pub struct Parser { tokens: Vec<Token>, pos: usize }
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self { Parser { tokens, pos: 0 } }
-    fn peek(&self) -> &Token { self.tokens.get(self.pos).unwrap_or(&Token::Eof) }
+    pub fn peek(&self) -> &Token { self.tokens.get(self.pos).unwrap_or(&Token::Eof) }
     fn advance(&mut self) -> Token { let t = self.peek().clone(); if t != Token::Eof { self.pos += 1; } t }
     fn expect(&mut self, expected: Token) { if *self.peek() == expected { self.advance(); } else { panic!("Expected {:?}", expected); } }
 
@@ -201,10 +210,20 @@ impl Parser {
         self.expect(Token::RBrace); Stmt::Block(stmts)
     }
 
-    fn parse_expression(&mut self) -> Expr { self.parse_assignment() }
+    pub fn parse_expression(&mut self) -> Expr { self.parse_assignment() }
     fn parse_assignment(&mut self) -> Expr {
-        let left = self.parse_logical_or();
+        let left = self.parse_ternary();
         if *self.peek() == Token::Assign { self.advance(); Expr::Assign(Box::new(left), Box::new(self.parse_assignment())) } else { left }
+    }
+    fn parse_ternary(&mut self) -> Expr {
+        let left = self.parse_logical_or();
+        if *self.peek() == Token::Question {
+            self.advance();
+            let then_branch = self.parse_expression();
+            self.expect(Token::Colon);
+            let else_branch = self.parse_ternary();
+            Expr::Ternary(Box::new(left), Box::new(then_branch), Box::new(else_branch))
+        } else { left }
     }
     fn parse_logical_or(&mut self) -> Expr {
         let mut left = self.parse_logical_and();
@@ -216,12 +235,19 @@ impl Parser {
     }
     fn parse_equality(&mut self) -> Expr {
         let mut left = self.parse_relational();
-        while *self.peek() == Token::Eq { self.advance(); left = Expr::Binary(Box::new(left), "==".to_string(), Box::new(self.parse_relational())); } left
+        while matches!(*self.peek(), Token::Eq | Token::NotEq | Token::StrictEq | Token::StrictNotEq) {
+            let op = match self.advance() {
+                Token::Eq => "==", Token::NotEq => "!=", Token::StrictEq => "===", Token::StrictNotEq => "!==", _ => unreachable!()
+            };
+            left = Expr::Binary(Box::new(left), op.to_string(), Box::new(self.parse_relational()));
+        } left
     }
     fn parse_relational(&mut self) -> Expr {
         let mut left = self.parse_additive();
-        while *self.peek() == Token::Lt || *self.peek() == Token::Gt {
-            let op = match self.advance() { Token::Lt => "<", Token::Gt => ">", _ => unreachable!() };
+        while matches!(*self.peek(), Token::Lt | Token::Gt | Token::LtEq | Token::GtEq) {
+            let op = match self.advance() {
+                Token::Lt => "<", Token::Gt => ">", Token::LtEq => "<=", Token::GtEq => ">=", _ => unreachable!()
+            };
             left = Expr::Binary(Box::new(left), op.to_string(), Box::new(self.parse_additive()));
         } left
     }
@@ -333,6 +359,9 @@ impl Interpreter {
                     _ => Err(Value::String("ReferenceError: Invalid left-hand side assignment".into())),
                 }
             }
+            Expr::Ternary(cond, then_branch, else_branch) => {
+                if Self::eval_expr(cond, env)?.is_truthy() { Self::eval_expr(then_branch, env) } else { Self::eval_expr(else_branch, env) }
+            }
             Expr::Logical(left, op, right) => {
                 let l_val = Self::eval_expr(left, env)?;
                 if op == "||" { if l_val.is_truthy() { Ok(l_val) } else { Self::eval_expr(right, env) } }
@@ -355,15 +384,30 @@ impl Interpreter {
                         },
                         _ => Err(Value::String("TypeError: Numeric operands required".into())),
                     },
-                    "==" => match (l, r) {
-                        (Value::Number(a), Value::Number(b)) => Ok(Value::Boolean(a == b)),
-                        (Value::String(a), Value::String(b)) => Ok(Value::Boolean(a == b)),
-                        (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
-                        (Value::Null, Value::Null) | (Value::Undefined, Value::Undefined) => Ok(Value::Boolean(true)),
-                        _ => Ok(Value::Boolean(false)),
+                    "==" | "!=" => match (l, r) {
+                        (Value::Number(a), Value::Number(b)) => Ok(Value::Boolean(if op == "==" { a == b } else { a != b })),
+                        (Value::String(a), Value::String(b)) => Ok(Value::Boolean(if op == "==" { a == b } else { a != b })),
+                        (Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(if op == "==" { a == b } else { a != b })),
+                        (Value::Null, Value::Null) | (Value::Undefined, Value::Undefined) => Ok(Value::Boolean(op == "==")),
+                        _ => Ok(Value::Boolean(op != "==")),
                     },
-                    "<" | ">" => match (l, r) {
-                        (Value::Number(a), Value::Number(b)) => Ok(Value::Boolean(if op == "<" { a < b } else { a > b })),
+                    "===" | "!==" => {
+                        let strict_eq = op == "===";
+                        let same_type = std::mem::discriminant(&l) == std::mem::discriminant(&r);
+                        if !same_type { return Ok(Value::Boolean(!strict_eq)); }
+                        let result = match (&l, &r) {
+                            (Value::Number(a), Value::Number(b)) => a == b,
+                            (Value::String(a), Value::String(b)) => a == b,
+                            (Value::Boolean(a), Value::Boolean(b)) => a == b,
+                            (Value::Null, Value::Null) | (Value::Undefined, Value::Undefined) => true,
+                            _ => false,
+                        };
+                        Ok(Value::Boolean(if strict_eq { result } else { !result }))
+                    }
+                    "<" | ">" | "<=" | ">=" => match (l, r) {
+                        (Value::Number(a), Value::Number(b)) => Ok(Value::Boolean(match op.as_str() {
+                            "<" => a < b, ">" => a > b, "<=" => a <= b, ">=" => a >= b, _ => unreachable!()
+                        })),
                         _ => Err(Value::String("TypeError: Comparable operands required".into())),
                     },
                     _ => unreachable!(),
@@ -464,10 +508,10 @@ impl Interpreter {
 pub fn create_global_env() -> Rc<RefCell<Environment>> {
     let global_env = Rc::new(RefCell::new(Environment::new()));
     let console_obj = Rc::new(RefCell::new(HashMap::new()));
-    console_obj.borrow_mut().insert("log".to_string(), Value::Builtin(|args| {
+    console_obj.borrow_mut().insert("log".to_string(), Value::Builtin(Rc::new(|args: Vec<Value>| {
         let output: Vec<String> = args.iter().map(|v| format!("{}", v)).collect();
         println!("{}", output.join(" ")); Value::Undefined
-    }));
+    })));
     global_env.borrow_mut().define("console".to_string(), Value::Object(console_obj));
     global_env
 }
@@ -488,7 +532,7 @@ mod tests {
     #[test]
     fn test_tokenizer() {
         let tokens = tokenize("let x = 42;");
-        assert_eq!(tokens.len(), 5);
+        assert_eq!(tokens.len(), 6);
     }
 
     #[test]

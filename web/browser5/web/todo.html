@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Todo List - Browser5 Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <p><a href="index.html">Home</a></p>
+    <h1>Todo List</h1>
+
+    <div class="card">
+        <h2>Tasks: <span style="color: #4361ee; font-weight: bold;" data-js-var="taskCount">0</span></h2>
+        <p>
+            <button class="btn btn-green" onclick="addTodo('Learn Rust')">Learn Rust</button>
+            <button class="btn btn-green" onclick="addTodo('Build a browser')">Build Browser</button>
+            <button class="btn btn-green" onclick="addTodo('Write CSS parser')">CSS Parser</button>
+        </p>
+        <p>
+            <button class="btn btn-red" onclick="clearTodos()">Clear All</button>
+        </p>
+    </div>
+
+    <div class="card">
+        <h2>Task List</h2>
+        <div style="white-space: pre; font-size: 16px;" data-js-var="todoList">No tasks yet.</div>
+    </div>
+
+    <script>
+        let todos = [];
+        let taskCount = 0;
+        let todoList = "No tasks yet.";
+
+        function addTodo(task) {
+            todos.push(task);
+            taskCount = todos.length;
+            updateDisplay();
+            console.log("Added:", task, "Total:", taskCount);
+        }
+
+        function clearTodos() {
+            todos = [];
+            taskCount = 0;
+            updateDisplay();
+            console.log("All tasks cleared");
+        }
+
+        function updateDisplay() {
+            taskCount = todos.length;
+            if (taskCount == 0) {
+                todoList = "No tasks yet.";
+            } else {
+                let result = "";
+                let i = 0;
+                while (i < taskCount) {
+                    let num = i + 1;
+                    result = result + num + ". " + todos[i];
+                    if (i < taskCount - 1) {
+                        result = result + "\n";
+                    }
+                    i = i + 1;
+                }
+                todoList = result;
+            }
+        }
+
+        console.log("Todo list ready. Add some tasks!");
+    </script>
+</body>
+</html>

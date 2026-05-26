@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Media Demo - Browser5</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <p><a href="index.html">Home</a></p>
+    <h1>Media: Images &amp; Canvas</h1>
+
+    <div class="card">
+        <h2>Photos</h2>
+        <img src="dog.jpeg"/>
+    </div>
+
+    <div class="card">
+        <h2>PNG Image</h2>
+        <p>Below is a PNG image loaded from <code>web/demo.png</code>:</p>
+        <img src="demo.png" alt="Colorful test pattern">
+    </div>
+
+    <div class="card">
+        <h2>Styled Image</h2>
+        <img src="demo.png" alt="Styled image" style="border: 3px solid #4361ee; border-radius: 12px;">
+    </div>
+
+    <div class="card">
+        <h2>Canvas Elements</h2>
+        <p>Default 300x200:</p>
+        <canvas width="300" height="200"></canvas>
+        <p>Styled 400x150 with red border:</p>
+        <canvas width="400" height="150" style="border: 2px solid #e63946;"></canvas>
+    </div>
+
+    <div class="highlight">
+        <p><strong>Note:</strong> The canvas is rendered as a placeholder. Full Canvas 2D API is not yet supported, but the element displays with correct dimensions.</p>
+    </div>
+
+    <script>
+        console.log("Media demo loaded successfully.");
+        console.log("Image: demo.png (128x128 color pattern)");
+        console.log("Canvas: 300x200 and 400x150");
+    </script>
+</body>
+</html>

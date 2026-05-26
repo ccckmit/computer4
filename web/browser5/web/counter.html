@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Counter - Browser5 Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <p><a href="index.html">Home</a></p>
+    <h1>Interactive Counter</h1>
+
+    <div class="card" style="text-align: center;">
+        <div class="counter-display" data-js-var="count">0</div>
+        <p>
+            <button class="btn btn-green" onclick="increment()">+1</button>
+            <button class="btn btn-red" onclick="decrement()">-1</button>
+            <button class="btn" onclick="reset()">Reset</button>
+        </p>
+    </div>
+
+    <div class="highlight">
+        <p>Each button click executes a JavaScript function. The <code>count</code> variable updates via js4, and <code>data-js-var="count"</code> reflects the value in the DOM.</p>
+    </div>
+
+    <script>
+        let count = 0;
+
+        function increment() {
+            count = count + 1;
+            console.log("Count:", count);
+        }
+
+        function decrement() {
+            count = count - 1;
+            console.log("Count:", count);
+        }
+
+        function reset() {
+            count = 0;
+            console.log("Count reset to 0");
+        }
+
+        console.log("Counter ready. Current count:", count);
+    </script>
+</body>
+</html>

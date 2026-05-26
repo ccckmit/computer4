@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calculator - Browser5 Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <p><a href="index.html">Home</a></p>
+    <h1>Calculator</h1>
+
+    <div class="card">
+        <div id="display" class="calc-display">0</div>
+        <p class="calc-btn-row">
+            <button class="btn" onclick="press('7')">7</button>
+            <button class="btn" onclick="press('8')">8</button>
+            <button class="btn" onclick="press('9')">9</button>
+            <button class="btn" onclick="press('/')">/</button>
+        </p>
+        <p class="calc-btn-row">
+            <button class="btn" onclick="press('4')">4</button>
+            <button class="btn" onclick="press('5')">5</button>
+            <button class="btn" onclick="press('6')">6</button>
+            <button class="btn" onclick="press('*')">*</button>
+        </p>
+        <p class="calc-btn-row">
+            <button class="btn" onclick="press('1')">1</button>
+            <button class="btn" onclick="press('2')">2</button>
+            <button class="btn" onclick="press('3')">3</button>
+            <button class="btn" onclick="press('-')">-</button>
+        </p>
+        <p class="calc-btn-row">
+            <button class="btn" onclick="press('0')">0</button>
+            <button class="btn" onclick="press('.')">.</button>
+            <button class="btn btn-green" onclick="calculate()">=</button>
+            <button class="btn" onclick="press('+')">+</button>
+        </p>
+        <p class="calc-btn-row">
+            <button class="btn btn-red" onclick="clearCalc()">C</button>
+        </p>
+    </div>
+
+    <script>
+        let display = "0";
+        let current = "";
+        let currentNum = 0;
+        let decimalDiv = 1;
+        let op = "";
+        let prev = 0;
+
+        function setDisplay(val) {
+            display = val;
+            let el = document.getElementById("display");
+            if (el != null) {
+                el.innerText = val;
+            }
+        }
+
+        function isDigit(c) {
+            return c == "0" || c == "1" || c == "2" || c == "3" || c == "4"
+                || c == "5" || c == "6" || c == "7" || c == "8" || c == "9";
+        }
+
+        function digitValue(c) {
+            if (c == "0") { return 0; }
+            else if (c == "1") { return 1; }
+            else if (c == "2") { return 2; }
+            else if (c == "3") { return 3; }
+            else if (c == "4") { return 4; }
+            else if (c == "5") { return 5; }
+            else if (c == "6") { return 6; }
+            else if (c == "7") { return 7; }
+            else if (c == "8") { return 8; }
+            else if (c == "9") { return 9; }
+            return 0;
+        }
+
+        function press(n) {
+            if (isDigit(n)) {
+                current = current + n;
+                setDisplay(current);
+                let d = digitValue(n);
+                if (decimalDiv > 1) {
+                    currentNum = currentNum + d / decimalDiv;
+                    decimalDiv = decimalDiv * 10;
+                } else {
+                    currentNum = currentNum * 10 + d;
+                }
+            } else if (n == "." && decimalDiv == 1) {
+                current = current + ".";
+                setDisplay(current);
+                decimalDiv = 10;
+            } else {
+                if (current != "") {
+                    prev = currentNum;
+                    current = "";
+                    currentNum = 0;
+                    decimalDiv = 1;
+                }
+                op = n;
+                setDisplay(op);
+            }
+            console.log("Display:", display);
+        }
+
+        function calculate() {
+            let result = 0;
+            if (op == "+") { result = prev + currentNum; }
+            else if (op == "-") { result = prev - currentNum; }
+            else if (op == "*") { result = prev * currentNum; }
+            else if (op == "/") {
+                if (currentNum == 0) { result = 0; }
+                else { result = prev / currentNum; }
+            }
+            else { result = currentNum; }
+            setDisplay("" + result);
+            current = "";
+            currentNum = 0;
+            decimalDiv = 1;
+            op = "";
+            prev = result;
+            console.log("Result:", display);
+        }
+
+        function clearCalc() {
+            setDisplay("0");
+            current = "";
+            currentNum = 0;
+            decimalDiv = 1;
+            op = "";
+            prev = 0;
+            console.log("Cleared");
+        }
+
+        console.log("Calculator ready.");
+    </script>
+</body>
+</html>
