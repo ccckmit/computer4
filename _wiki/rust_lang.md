@@ -191,6 +191,133 @@ fn panic(info: &PanicInfo) -> ! {
 }
 ```
 
+## 本專案使用的外部 crate
+
+本專案 45 份 `Cargo.toml` 共使用約 60 個不同的外部 crate，21 個子 crate 完全依賴標準函式庫（零外部依賴）。
+
+### Web 與網路
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `axum` | 非同步 HTTP 框架 (db6 gRPC/REST) | database/db6 |
+| `tokio` | 非同步執行器 | database/db6, crypto/ssl4 |
+| `tonic` | gRPC 框架 | database/db6 |
+| `reqwest` | HTTP 用戶端 | web/browser4, web/md4browser |
+| `tungstenite` / `tokio-tungstenite` | WebSocket | gui/game4, database/db6 |
+| `rustls` / `tokio-rustls` | TLS 加密 (純 Rust) | crypto/ssl4 |
+| `webpki-roots` | TLS 根憑證 | crypto/ssl4 |
+| `http` | HTTP 型別 | database/db6 |
+| `futures` / `futures-util` | 非同步工具 | database/db6 |
+| `prost` / `prost-types` / `prost-build` | protobuf 編解碼 | database/db6 |
+| `bytes` | 位元組緩衝 | database/db6 |
+
+### GUI 與圖形
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `eframe` | egui 框架 (原生視窗) | gui/win4, eda/ic4, web/browser4/5, web/md4browser |
+| `egui_commonmark` | Markdown 渲染 (egui) | web/md4browser |
+| `sdl2` | SDL2 繫結 (RV 模擬器) | os/rvboard4/simulator |
+| `plotters` | 圖表繪製 | math4 |
+| `dirs` | 系統目錄查詢 | gui/win4 |
+| `chrono` | 日期時間 | gui/win4 |
+
+### 序列化與儲存
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `serde` / `serde_json` / `serde_bytes` | 序列化框架 | database/db6, database/lsm, eda/ruspice |
+| `bincode` | 二進位序列化 | database/db6, database/lsm |
+| `zstd` | Zstandard 壓縮 | database/db6 |
+| `memmap2` | 記憶體映射檔案 | database/db6 |
+| `rusqlite` | SQLite 繫結 | gui/game4 |
+| `tempfile` | 暫存檔案 (測試) | database/db6, database/lsm, compiler/objdump |
+
+### 密碼學
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `rcgen` | TLS 憑證產生 | crypto/ssl4, crypto/keygen |
+| `rsa` | RSA 演算法 | crypto/keygen |
+| `p256` / `p384` | ECDSA (P-256/P-384) | crypto/keygen |
+| `pkcs8` | PKCS#8 金鑰格式 | crypto/keygen |
+| `pem` | PEM 格式編解碼 | crypto/keygen |
+
+### 解析與語言
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `scraper` | HTML 解析 (CSS 選擇器) | web/browser4, web/browser5 |
+| `ego-tree` | DOM 樹實作 (scraper 底層) | web/browser4, web/browser5 |
+| `boa_engine` | JavaSript 引擎 (完整 ES2020+) | web/browser4 |
+| `scroll` | 位元組偏移讀寫 | compiler/objdump |
+
+### 媒體
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `image` | 圖片解碼 (PNG/JPEG/GIF/...) | math4, media/jpeg, web/browser5 |
+| `rodio` | 音訊播放 (symphonia 後端) | media/aplayer4 |
+| `ndarray` | N 維陣列 (NumPy-like) | math4 |
+| `statrs` | 統計函式庫 | math4 |
+
+### CLI 與終端機
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `clap` | 命令列參數解析 | compiler/objdump, crypto/keygen |
+| `crossterm` | 終端機控制 (游標/色彩) | media/aplayer4, tool/vi4 |
+| `assert_cmd` / `predicates` | CLI 測試工具 | compiler/objdump |
+
+### 數學與模擬
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `rand` | 亂數產生 | math4, crypto/keygen, eda/ic4 |
+| `nalgebra` | 線性代數 (矩陣/向量) | eda/ruspice |
+| `approx` | 浮點數近似比較 (測試) | eda/ruspice |
+
+### 底層與 OS
+
+| Crate | 用途 | 使用位置 |
+|---|---|---|
+| `buddy-alloc` | buddy 記憶體分配器 (no_std) | xv6/xv7 kernel |
+| `bytemuck` | 安全位元組轉型 | xv6/xv7 mkfs |
+| `fastrand` | 快速亂數 | database/db6 |
+| `thiserror` | 錯誤型別 derive macro | database/db6, database/lsm, compiler/objdump |
+
+### 零外部依賴的 crate（僅 std）
+
+```
+database/sql4     database/btree     database/fts
+database/lsm (*已列上方*)  database/swisstable
+database/patricia-trie    database/redblacktree
+database/inodefs   compiler/lli4     compiler/rustc4
+compiler/rv4       web/xdom4         web/js4
+media/mp3          media/mpeg1       eda/ruhdl
+eda/verilog4       eda/synthesis     os/mini-riscv-os
+os/rvboard4        tool/lz4
+```
+*\*lsm 使用 serde/bincode/thiserror，其餘 21 個 crate 完全零外部依賴。*
+
+## 區域路徑依賴
+
+部分 crate 依賴本專案內的其他 crate（而非 crates.io）：
+
+```toml
+# web/browser5/Cargo.toml
+[dependencies]
+xdom4 = { path = "../xdom4" }
+js4 = { path = "../js4" }
+```
+
+```toml
+# os/xv6-rust-octopus/user/Cargo.toml
+kernel = { path = "../kernel" }
+```
+
+這意味著建置時需注意依賴順序，無法獨立編譯這些 crate。
+
 ## 相關檔案
 
 - 根目錄多個 `Cargo.toml` — 各 crate 依賴配置
@@ -203,3 +330,4 @@ fn panic(info: &PanicInfo) -> ! {
 - Rust 標準函式庫文件：https://doc.rust-lang.org/std/
 - The Rustonomicon：https://doc.rust-lang.org/nomicon/
 - Rust 嵌入式開發：https://docs.rust-embedded.org/
+- crates.io：https://crates.io/

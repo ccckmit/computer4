@@ -1,0 +1,10 @@
+[package]
+name = "mp4rs"
+version = "0.1.0"
+edition = "2021"
+
+[[example]]
+name = "info"
+path = "examples/info.rs"
+
+[dependencies]

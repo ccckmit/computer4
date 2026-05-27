@@ -97,6 +97,15 @@ fn test_parse_color_invalid() {
 }
 
 #[test]
+fn test_compute_style_body_background() {
+    let node = xdom4::Node::new_element("body");
+    let rules = css::parse_css("body { background-color: #0f1117; color: #e8eaf0; }");
+    let style = css::compute_style(&node, &rules);
+    assert_eq!(style.background_color, Some("#0f1117".to_string()), "body bg should be #0f1117");
+    assert_eq!(style.color, Some("#e8eaf0".to_string()), "body color should be #e8eaf0");
+}
+
+#[test]
 fn test_compute_style_simple() {
     let node = xdom4::Node::new_element("h1");
     let rules = css::parse_css("h1 { color: red; font-size: 20px; }");

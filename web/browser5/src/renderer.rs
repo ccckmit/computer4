@@ -60,15 +60,17 @@ impl<'a> Renderer<'a> {
         }
 
         let display = style.display.as_deref().unwrap_or(
-            if matches!(tag, "div" | "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "li" | "header" | "footer" | "nav" | "section" | "article" | "main" | "aside" | "blockquote" | "hr" | "form" | "table" | "tr" | "td" | "th" | "pre" | "canvas") {
+            if matches!(tag, "div" | "p" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "ul" | "ol" | "li" | "header" | "footer" | "nav" | "section" | "article" | "main" | "aside" | "blockquote" | "hr" | "form" | "table" | "tr" | "td" | "th" | "pre" | "canvas" | "body" | "html") {
                 "block"
             } else {
                 "inline"
             },
         );
+        
 
         let bg_color = style.background_color.as_ref()
             .and_then(|c| css::parse_color(c));
+        
 
         if display == "block" || tag == "html" || tag == "body" || tag == "img" || tag == "canvas" {
             self.render_block(ui, node, tag, style, bg_color);
@@ -127,14 +129,18 @@ impl<'a> Renderer<'a> {
         let padding_right = style.padding_right.unwrap_or(0.0);
         let padding_bottom = style.padding_bottom.unwrap_or(0.0);
         let padding_left = style.padding_left.unwrap_or(0.0);
+        let is_body_or_html = tag == "body" || tag == "html";
 
-        if margin_top > 0.0 { ui.add_space(margin_top); }
+        if margin_top > 0.0 && !is_body_or_html { ui.add_space(margin_top); }
 
         let has_border = style.border_width.map_or(false, |w| w > 0.0)
             && style.border_style.as_deref() != Some("none");
 
+        let bg_is_body = is_body_or_html && bg_color.is_some();
         let frame = Frame::none();
-        let frame = if let Some(bg) = bg_color {
+        let frame = if bg_is_body {
+            frame
+        } else if let Some(bg) = bg_color {
             frame.fill(bg)
         } else {
             frame
@@ -164,30 +170,55 @@ impl<'a> Renderer<'a> {
         let width = style.width;
         let height = style.height;
 
-        frame
-            .inner_margin(inner_margin)
-            .show(ui, |ui| {
-                let avail = ui.available_width();
-                if let Some(w) = width {
-                    if w < avail {
+        let avail = ui.available_width();
+
+        if bg_is_body {
+            let bg = bg_color.unwrap();
+            let r = ui.available_rect_before_wrap();
+            ui.painter().rect_filled(r, 0.0, bg);
+            ui.set_min_width(avail);
+            ui.set_height(ui.available_height());
+            ui.add_space(padding_top.max(margin_top));
+            ui.horizontal(|ui| {
+                ui.add_space(padding_left.max(margin_left));
+                ui.vertical(|ui| {
+                    ui.group(|ui| {
+                        ui.set_width(ui.available_width() - padding_left.max(margin_left) - padding_right.max(margin_right));
+                        self.render_children(ui, node, style);
+                    });
+                });
+                ui.add_space(padding_right.max(margin_right));
+            });
+        } else {
+            frame
+                .inner_margin(inner_margin)
+                .show(ui, |ui| {
+                    let avail = ui.available_width();
+                    if let Some(w) = width {
+                        if w < avail {
+                            match text_align {
+                                Some("center") => { ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| { self.render_children(ui, node, style); }); }
+                                Some("right") => { ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| { self.render_children(ui, node, style); }); }
+                                _ => { ui.set_min_width(w); self.render_children(ui, node, style); }
+                            }
+                        } else {
+                            self.render_children(ui, node, style);
+                        }
+                    } else if is_body_or_html {
+                        ui.set_min_width(avail);
+                        self.render_children(ui, node, style);
+                    } else {
                         match text_align {
                             Some("center") => { ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| { self.render_children(ui, node, style); }); }
                             Some("right") => { ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| { self.render_children(ui, node, style); }); }
-                            _ => { ui.set_min_width(w); self.render_children(ui, node, style); }
+                            _ => { self.render_children(ui, node, style); }
                         }
-                    } else {
-                        self.render_children(ui, node, style);
                     }
-                } else {
-                    match text_align {
-                        Some("center") => { ui.with_layout(egui::Layout::centered_and_justified(egui::Direction::TopDown), |ui| { self.render_children(ui, node, style); }); }
-                        Some("right") => { ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| { self.render_children(ui, node, style); }); }
-                        _ => { self.render_children(ui, node, style); }
-                    }
-                }
-            });
+                });
+        }
 
         if let Some(h) = height { ui.set_min_height(h); }
+        if is_body_or_html { ui.set_min_height(ui.available_height()); }
 
         if outer_margin_bottom > 0.0 { ui.add_space(outer_margin_bottom); }
         if outer_margin_right > 0.0 { ui.add_space(outer_margin_right); }

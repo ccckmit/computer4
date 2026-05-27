@@ -156,7 +156,10 @@ pub fn compute_style(node: &Node, rules: &[CssRule]) -> Style {
     let mut style = Style::default();
 
     for rule in rules {
-        let matches = rule.selectors.iter().any(|sel| matches_simple_selector(node, sel));
+        let matches = rule.selectors.iter().any(|sel| {
+            if sel.starts_with("::") || sel.starts_with(":") { return false; }
+            matches_simple_selector(node, sel)
+        });
         if !matches { continue; }
         for (prop, val) in &rule.declarations {
             apply_property(&mut style, prop, val);
