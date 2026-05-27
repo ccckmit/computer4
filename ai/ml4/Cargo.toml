@@ -1,0 +1,43 @@
+[package]
+name = "ml4"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+
+[lib]
+name = "ml4"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ml4"
+path = "src/main.rs"
+
+[[example]]
+name = "linear_models"
+path = "examples/linear_models.rs"
+
+[[example]]
+name = "trees"
+path = "examples/trees.rs"
+
+[[example]]
+name = "ensemble"
+path = "examples/ensemble.rs"
+
+[[example]]
+name = "clustering"
+path = "examples/clustering.rs"
+
+[[example]]
+name = "decomposition"
+path = "examples/decomposition.rs"
+
+[[example]]
+name = "preprocessing"
+path = "examples/preprocessing.rs"
+
+[[example]]
+name = "pipeline"
+path = "examples/pipeline.rs"

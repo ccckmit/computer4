@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>CartPole Render</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  .container {
+    background: #16213e;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: #87CEEB;
+  }
+  .info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .info span { color: #64ffda; }
+  .status {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #aaa;
+  }
+  .status.connected { color: #64ffda; }
+  .status.disconnected { color: #ff5252; }
+</style>
+</head>
+<body>
+<div class="container">
+  <canvas id="canvas" width="800" height="400"></canvas>
+  <div class="info">
+    <div>步數 <span id="steps">0</span></div>
+    <div>位置 x <span id="x">0.000</span></div>
+    <div>角度 θ <span id="theta">0.0°</span></div>
+    <div>獎勵 <span id="reward">0</span></div>
+  </div>
+  <div id="status" class="status disconnected">⏳ 連線中...</div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 400;
+
+const TRACK_Y = 300;
+const CART_W = 80, CART_H = 30;
+const POLE_LEN = 140;
+const SCALE = 80;
+
+function drawScene(x, theta, steps, reward, done) {
+  ctx.clearRect(0, 0, W, H);
+
+  const sky = ctx.createLinearGradient(0, 0, 0, TRACK_Y);
+  sky.addColorStop(0, '#87CEEB');
+  sky.addColorStop(1, '#B0E0E6');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, TRACK_Y + 10);
+
+  ctx.fillStyle = '#5D4037';
+  ctx.fillRect(0, TRACK_Y + 10, W, H - TRACK_Y - 10);
+
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(20, TRACK_Y);
+  ctx.lineTo(W - 20, TRACK_Y);
+  ctx.stroke();
+
+  ctx.fillStyle = '#666';
+  for (let px = 40; px < W - 30; px += 40) {
+    ctx.fillRect(px, TRACK_Y - 3, 4, 6);
+  }
+
+  const cartX = W / 2 + x * SCALE;
+  const cartY = TRACK_Y - CART_H / 2;
+
+  const poleEndX = cartX + POLE_LEN * Math.sin(theta);
+  const poleEndY = cartY - CART_H / 2 - POLE_LEN * Math.cos(theta);
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(cartX + 3, cartY - CART_H / 2 + 3);
+  ctx.lineTo(poleEndX + 3, poleEndY + 3);
+  ctx.stroke();
+
+  const gradient = ctx.createLinearGradient(
+    cartX, cartY - CART_H / 2,
+    poleEndX, poleEndY
+  );
+  gradient.addColorStop(0, '#E53935');
+  gradient.addColorStop(1, '#FF8A80');
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cartX, cartY - CART_H / 2);
+  ctx.lineTo(poleEndX, poleEndY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#FFD600';
+  ctx.beginPath();
+  ctx.arc(poleEndX, poleEndY, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#FFA000';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#1565C0';
+  ctx.shadowColor = 'rgba(0,0,0,0.3)';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.roundRect(cartX - CART_W / 2, cartY - CART_H / 2, CART_W, CART_H, 6);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#1976D2';
+  ctx.beginPath();
+  ctx.roundRect(cartX - CART_W / 2 + 6, cartY - CART_H / 2 + 4, CART_W - 12, CART_H / 3, 3);
+  ctx.fill();
+
+  ctx.fillStyle = '#333';
+  const wheelY = cartY + CART_H / 2 + 4;
+  ctx.beginPath();
+  ctx.arc(cartX - CART_W / 3, wheelY, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cartX + CART_W / 3, wheelY, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (Math.abs(x) > 0.01) {
+    const arrowX = x > 0 ? cartX - 30 : cartX + 30;
+    ctx.strokeStyle = '#FFD600';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(arrowX, cartY);
+    ctx.lineTo(arrowX + (x > 0 ? -20 : 20), cartY);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(arrowX + (x > 0 ? -20 : 20), cartY);
+    ctx.lineTo(arrowX + (x > 0 ? -14 : 14), cartY - 5);
+    ctx.lineTo(arrowX + (x > 0 ? -14 : 14), cartY + 5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = 'rgba(255,0,0,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 5]);
+  const boundX = W / 2 + 2.4 * SCALE;
+  ctx.beginPath();
+  ctx.moveTo(boundX, TRACK_Y - 20);
+  ctx.lineTo(boundX, TRACK_Y + 20);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(W - boundX, TRACK_Y - 20);
+  ctx.lineTo(W - boundX, TRACK_Y + 20);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (done) {
+    ctx.fillStyle = 'rgba(255,0,0,0.15)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff5252';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DONE', W / 2, 100);
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(W - 160, 8, 152, 52);
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px Consolas, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`步數: ${steps}`, W - 150, 28);
+  ctx.fillText(`獎勵: ${reward.toFixed(1)}`, W - 150, 48);
+
+  document.getElementById('steps').textContent = steps;
+  document.getElementById('x').textContent = x.toFixed(3);
+  const deg = (theta * 180 / Math.PI).toFixed(1);
+  document.getElementById('theta').textContent = deg + '°';
+  document.getElementById('reward').textContent = reward.toFixed(2);
+}
+
+const statusEl = document.getElementById('status');
+let ws = null;
+let lastFrame = null;
+let animId = 0;
+
+function connect() {
+  const port = location.port || '8080';
+  ws = new WebSocket(`ws://${location.hostname}:${port}`);
+
+  ws.onopen = () => {
+    statusEl.textContent = '✅ 已連線';
+    statusEl.className = 'status connected';
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      lastFrame = JSON.parse(e.data);
+      if (lastFrame.done) statusEl.textContent = '🔴 回合結束 — 等待下一回合...';
+    } catch { }
+  };
+
+  ws.onclose = () => {
+    statusEl.className = 'status disconnected';
+    statusEl.textContent = '⏳ 連線中斷，3 秒後重連...';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => { ws?.close(); };
+}
+
+function animate() {
+  if (lastFrame) {
+    drawScene(
+      lastFrame.x,
+      lastFrame.theta,
+      lastFrame.steps,
+      lastFrame.reward,
+      lastFrame.done
+    );
+  }
+  animId = requestAnimationFrame(animate);
+}
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+    return this;
+  };
+}
+
+connect();
+animate();
+</script>
+</body>
+</html>

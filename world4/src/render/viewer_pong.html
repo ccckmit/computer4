@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>Pong Render</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  .container {
+    background: #16213e;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: #0f0f23;
+  }
+  .info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .info span { color: #64ffda; }
+  .status {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #aaa;
+  }
+  .status.connected { color: #64ffda; }
+  .status.disconnected { color: #ff5252; }
+</style>
+</head>
+<body>
+<div class="container">
+  <canvas id="canvas" width="800" height="500"></canvas>
+  <div class="info">
+    <div>步數 <span id="steps">0</span></div>
+    <div>反彈 <span id="hits">0</span></div>
+    <div>獎勵 <span id="reward">0.00</span></div>
+    <div>狀態 <span id="status-text">進行中</span></div>
+  </div>
+  <div id="connection-status" class="status disconnected">⏳ 連線中...</div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 500;
+
+const MARGIN = 40;
+const PLAY_W = W - 2 * MARGIN;
+const PLAY_H = H - 2 * MARGIN;
+
+function drawScene(ball_x, ball_y, paddle_y, hits, steps, reward, done) {
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = '#0f0f23';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.strokeStyle = '#2a2a4a';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(MARGIN, MARGIN, PLAY_W, PLAY_H);
+
+  ctx.setLineDash([8, 8]);
+  ctx.strokeStyle = '#2a2a5a';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W / 2, MARGIN);
+  ctx.lineTo(W / 2, H - MARGIN);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const paddleX = MARGIN + 10;
+  const paddleHalf = 15;
+  const paddleCenter = MARGIN + paddle_y * PLAY_H;
+  const gradient = ctx.createLinearGradient(paddleX - 5, 0, paddleX + 5, 0);
+  gradient.addColorStop(0, '#00E5FF');
+  gradient.addColorStop(1, '#00B8D4');
+  ctx.fillStyle = gradient;
+  ctx.shadowColor = '#00E5FF';
+  ctx.shadowBlur = 10;
+  ctx.fillRect(paddleX - 4, paddleCenter - paddleHalf, 8, paddleHalf * 2);
+  ctx.shadowBlur = 0;
+
+  const ballScreenX = MARGIN + ball_x * PLAY_W;
+  const ballScreenY = MARGIN + ball_y * PLAY_H;
+
+  ctx.shadowColor = '#FFD600';
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = '#FFD600';
+  ctx.beginPath();
+  ctx.arc(ballScreenX, ballScreenY, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255, 214, 0, 0.2)';
+  ctx.beginPath();
+  ctx.arc(ballScreenX, ballScreenY, 16, 0, Math.PI * 2);
+  ctx.fill();
+
+  const gradient2 = ctx.createLinearGradient(W - MARGIN - 10, 0, W - MARGIN, 0);
+  gradient2.addColorStop(0, 'rgba(255, 50, 50, 0)');
+  gradient2.addColorStop(1, 'rgba(255, 50, 50, 0.3)');
+  ctx.fillStyle = gradient2;
+  ctx.fillRect(W - MARGIN - 10, MARGIN, 10, PLAY_H);
+
+  if (done) {
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ff5252';
+    ctx.font = 'bold 48px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', W / 2, 120);
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(W - 180, 10, 170, 50);
+  ctx.fillStyle = '#fff';
+  ctx.font = '14px Consolas, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`反彈: ${hits}`, W - 170, 30);
+  ctx.fillText(`步數: ${steps}`, W - 170, 48);
+
+  document.getElementById('steps').textContent = steps;
+  document.getElementById('hits').textContent = hits;
+  document.getElementById('reward').textContent = reward.toFixed(2);
+  document.getElementById('status-text').textContent = done ? '結束' : '進行中';
+}
+
+const statusEl = document.getElementById('connection-status');
+let ws = null;
+let lastFrame = null;
+let animId = 0;
+
+function connect() {
+  const port = location.port || '8080';
+  ws = new WebSocket(`ws://${location.hostname}:${port}`);
+
+  ws.onopen = () => {
+    statusEl.textContent = '✅ 已連線';
+    statusEl.className = 'status connected';
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      lastFrame = JSON.parse(e.data);
+    } catch { }
+  };
+
+  ws.onclose = () => {
+    statusEl.className = 'status disconnected';
+    statusEl.textContent = '⏳ 連線中斷，3 秒後重連...';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => { ws?.close(); };
+}
+
+function animate() {
+  if (lastFrame) {
+    drawScene(
+      lastFrame.ball_x,
+      lastFrame.ball_y,
+      lastFrame.paddle_y,
+      lastFrame.hits,
+      lastFrame.steps,
+      lastFrame.reward,
+      lastFrame.done
+    );
+  }
+  animId = requestAnimationFrame(animate);
+}
+
+connect();
+animate();
+</script>
+</body>
+</html>

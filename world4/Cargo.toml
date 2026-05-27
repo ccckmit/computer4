@@ -1,0 +1,40 @@
+[package]
+name = "world4"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.8"
+tungstenite = "0.20"
+
+[lib]
+name = "world4"
+path = "src/lib.rs"
+
+[[bin]]
+name = "world4"
+path = "src/main.rs"
+
+[[example]]
+name = "frozen_lake_example"
+path = "examples/frozen_lake_example.rs"
+
+[[example]]
+name = "frozen_lake_qtable"
+path = "examples/frozen_lake_qtable.rs"
+
+[[example]]
+name = "cartpole_closed_form"
+path = "examples/cartpole_closed_form.rs"
+
+[[example]]
+name = "pong_closed_form"
+path = "examples/pong_closed_form.rs"
+
+[[bin]]
+name = "world4_cartpole_render_test"
+path = "src/render/test_cartpole.rs"
+
+[[bin]]
+name = "world4_pong_render_test"
+path = "src/render/test_pong.rs"

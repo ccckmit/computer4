@@ -1,0 +1,36 @@
+[package]
+name = "llm4"
+version = "0.1.0"
+edition = "2021"
+description = "Mini Language Model v2 - A from-scratch transformer in Rust with autograd"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[[example]]
+name = "grad_check"
+path = "examples/grad_check.rs"
+
+[[example]]
+name = "train_pretrain"
+path = "examples/train_pretrain.rs"
+
+[[example]]
+name = "train_finetune"
+path = "examples/train_finetune.rs"
+
+[[example]]
+name = "generate"
+path = "examples/generate.rs"
+
+[[example]]
+name = "gen_data"
+path = "examples/gen_data.rs"
