@@ -1092,7 +1092,7 @@ mod tests {
     #[test]
     fn test_matmul_grad() {
         let a_data = vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let b = Tensor::from_slice(&[0.1f32, -0.2, 0.3, 0.4, -0.5, 0.6, 0.7, -0.8], &[2, 4], false);
+        let b = Tensor::from_slice(&[0.1f32, -0.2, 0.3, 0.4, -0.5, 0.6, 0.7, -0.8, 0.9, 1.0, -1.1, 1.2], &[3, 4], false);
         let make_loss = |x: &Tensor| x.matmul(&b).sum_all();
         check_op(&mut GradReport::new(), "matmul", &[2, 3], &a_data, make_loss, &[0, 2, 5]);
     }

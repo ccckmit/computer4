@@ -183,18 +183,18 @@ impl DataGenerators {
     fn expand_to_target(sentences: &[String], target_len: usize) -> String {
         let mut rng = rand::thread_rng();
         let mut result = String::new();
-        while result.len() < target_len {
+        while result.chars().count() < target_len {
             let mut sample = sentences.to_vec();
             sample.shuffle(&mut rng);
             for s in &sample {
                 result.push_str(s);
-                if result.len() >= target_len {
+                if result.chars().count() >= target_len {
                     break;
                 }
             }
         }
-        result.truncate(target_len);
-        result
+        // Truncate to exactly target_len characters
+        result.chars().take(target_len).collect()
     }
 }
 

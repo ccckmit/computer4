@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>FrozenLake Render</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  .container {
+    background: #16213e;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: #e8f4f8;
+  }
+  .info {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: 'Consolas', 'Courier New', monospace;
+  }
+  .info span { color: #64ffda; }
+  .status {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: #aaa;
+  }
+  .status.connected { color: #64ffda; }
+  .status.disconnected { color: #ff5252; }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: #aaa;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <canvas id="canvas" width="400" height="400"></canvas>
+  <div class="info">
+    <div>步數 <span id="steps">0</span></div>
+    <div>獎勵 <span id="reward">0.00</span></div>
+    <div>狀態 <span id="status">-</span></div>
+  </div>
+  <div id="connection-status" class="status disconnected">⏳ 連線中...</div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#4fc3f7"></div>起點 S</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e0e0e0"></div>冰面 F</div>
+    <div class="legend-item"><div class="legend-color" style="background:#e53935"></div>洞穴 H</div>
+    <div class="legend-item"><div class="legend-color" style="background:#4caf50"></div>目標 G</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ffd600"></div>Agent</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 400;
+const GRID = 4;
+const CELL = W / GRID;
+
+const COLORS = {
+  'S': '#4fc3f7',
+  'F': '#e0e0e0',
+  'H': '#e53935',
+  'G': '#4caf50',
+  'A': '#ffd600'
+};
+
+function drawScene(agent_pos, cells, steps, reward, done, total_reward) {
+  ctx.clearRect(0, 0, W, H);
+
+  for (let r = 0; r < GRID; r++) {
+    for (let c = 0; c < GRID; c++) {
+      const x = c * CELL;
+      const y = r * CELL;
+      const cell = cells[r * GRID + c] || 'F';
+
+      ctx.fillStyle = COLORS[cell] || '#e0e0e0';
+      ctx.fillRect(x + 2, y + 2, CELL - 4, CELL - 4);
+
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 12px Consolas';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cell, x + CELL / 2, y + CELL / 2);
+    }
+  }
+
+  if (agent_pos !== undefined) {
+    const ax = (agent_pos % GRID) * CELL + CELL / 2;
+    const ay = Math.floor(agent_pos / GRID) * CELL + CELL / 2;
+
+    ctx.fillStyle = '#ffd600';
+    ctx.beginPath();
+    ctx.arc(ax, ay, CELL / 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 16px Consolas';
+    ctx.fillText('A', ax, ay);
+  }
+
+  if (done) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = reward > 0 ? '#4caf50' : '#e53935';
+    ctx.font = 'bold 32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(reward > 0 ? '🎉 成功!' : '💀 失敗', W / 2, H / 2);
+  }
+
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * CELL, 0);
+    ctx.lineTo(i * CELL, H);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i * CELL);
+    ctx.lineTo(W, i * CELL);
+    ctx.stroke();
+  }
+
+  document.getElementById('steps').textContent = steps;
+  document.getElementById('reward').textContent = total_reward.toFixed(2);
+  document.getElementById('status').textContent = done ? (reward > 0 ? '成功' : '失敗') : '進行中';
+}
+
+const statusEl = document.getElementById('connection-status');
+let ws = null;
+let lastFrame = null;
+
+function connect() {
+  const port = location.port || '8080';
+  ws = new WebSocket(`ws://${location.hostname}:${port}`);
+
+  ws.onopen = () => {
+    statusEl.textContent = '✅ 已連線';
+    statusEl.className = 'status connected';
+  };
+
+  ws.onmessage = (e) => {
+    try {
+      lastFrame = JSON.parse(e.data);
+    } catch { }
+  };
+
+  ws.onclose = () => {
+    statusEl.className = 'status disconnected';
+    statusEl.textContent = '⏳ 連線中斷，3 秒後重連...';
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => { ws?.close(); };
+}
+
+function animate() {
+  if (lastFrame) {
+    drawScene(
+      lastFrame.agent_pos,
+      lastFrame.cells,
+      lastFrame.steps,
+      lastFrame.reward,
+      lastFrame.done,
+      lastFrame.total_reward
+    );
+  }
+  requestAnimationFrame(animate);
+}
+
+connect();
+animate();
+</script>
+</body>
+</html>
