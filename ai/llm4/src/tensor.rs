@@ -455,7 +455,12 @@ impl Tensor {
                                 for i in 0..m {
                                     g += og[batch * m * db + i * db + j] * a_data2[ba * m * k + i * k + kk];
                                 }
-                                og2.grad[bb * k * db + kk * db + j] += g;
+                                let idx = bb * k * db + kk * db + j;
+                                if idx == 4 {
+                                    eprintln!("DEBUG matmul grad-B[4]: og len={}, og[0]={}, og[4]={}, a_data2[1]={}, a_data2[4]={}, g={}",
+                                        og.len(), og[0], og[4], a_data2[1], a_data2[4], g);
+                                }
+                                og2.grad[idx] += g;
                             }
                         }
                     }
@@ -511,7 +516,8 @@ impl Tensor {
                 for (i, (g, og)) in ti.grad.iter_mut().zip(og.iter()).enumerate() {
                     let v = data_snap[i];
                     let s = 1.0 / (1.0 + (-v).exp());
-                    let ds = s * (1.0 + v * s * (1.0 - s));
+                    // d/dx[x*s] = s + x*s' = s + x*s*(1-s)
+                    let ds = s + v * s * (1.0 - s);
                     *g += og * ds;
                 }
             }));
@@ -1154,5 +1160,86 @@ mod tests {
         let data = vec![1.0f32, 2.0, 3.0, 4.0];
         let make_loss = |x: &Tensor| x.mul_scalar(3.0).add_scalar(-1.0).sum_all();
         check_op(&mut GradReport::new(), "mul_scalar+add_scalar", &[2, 2], &data, make_loss, &[0, 2]);
+    }
+
+    #[test]
+    fn test_all_gradients_comprehensive() {
+        let mut report = GradReport::new();
+
+        println!("\n══ Comprehensive Gradient Check ══");
+
+        // 1. Element-wise operations
+        let data3 = vec![-1.5, 0.3, 2.0, -0.7, 1.1, 0.0];
+        let shape3 = [2, 3];
+        check_op(&mut report, "relu", &shape3, &data3, |x| x.relu().sum_all(), &[0, 1, 2, 4]);
+        check_op(&mut report, "tanh", &shape3, &data3, |x| x.tanh().sum_all(), &[0, 1, 3, 5]);
+        check_op(&mut report, "silu", &shape3, &data3, |x| x.silu().sum_all(), &[0, 2, 4]);
+        check_op(&mut report, "pow(3)", &shape3, &data3, |x| x.pow(3.0).sum_all(), &[0, 2, 4]);
+        check_op(&mut report, "mul_scalar(2.5)", &shape3, &data3, |x| x.mul_scalar(2.5).sum_all(), &[0, 3]);
+        check_op(&mut report, "add_scalar(-1)", &shape3, &data3, |x| x.add_scalar(-1.0).sum_all(), &[1, 4]);
+        check_op(&mut report, "neg", &shape3, &data3, |x| x.neg().sum_all(), &[0, 5]);
+        check_op(&mut report, "exp", &shape3, &data3, |x| x.exp().sum_all(), &[0, 2, 4]);
+
+        // 2. Reduction & softmax
+        let data4 = vec![1.0, -0.5, 0.3, 2.0, 0.1, -1.2];
+        let shape4 = [2, 3];
+        check_op(&mut report, "sum_all", &shape4, &data4, |x| x.sum_all(), &[0, 2, 5]);
+        check_op(&mut report, "mean_all", &shape4, &data4, |x| x.mean_all(), &[1, 3]);
+
+        let weights = Tensor::from_slice(&[1.0f32, 2.0, 3.0, 0.5, 1.5, 2.5], &[2, 3], false);
+        check_op(&mut report, "softmax(1) weighted", &shape4, &data4,
+            |x| x.softmax(1).mul(&weights).sum_all(), &[0, 1, 2, 3, 4, 5]);
+
+        // 3. matmul
+        let a_data: Vec<f32> = (0..6).map(|i| (i as f32 - 2.5) * 0.5).collect();
+        let b_data: Vec<f32> = vec![0.1, -0.2, 0.3, 0.4, -0.5, 0.6, 0.7, -0.8, 0.9, 1.0, -1.1, 1.2];
+        let b_t = Tensor::from_slice(&b_data, &[3, 4], false);
+        check_op(&mut report, "matmul grad-A", &[2, 3], &a_data,
+            |x| x.matmul(&b_t).sum_all(), &[0, 2, 5]);
+
+        let a_t = Tensor::from_slice(&a_data, &[2, 3], false);
+        check_op(&mut report, "matmul grad-B", &[3, 4], &b_data,
+            |x| a_t.matmul(x).sum_all(), &[0, 4, 11]);
+
+        // 4. transpose
+        let td: Vec<f32> = (0..24).map(|i| i as f32 * 0.5 - 6.0).collect();
+        check_op(&mut report, "transpose(0,1)", &[2, 3, 4], &td,
+            |x| x.transpose(0, 1).sum_all(), &[0, 7, 23]);
+        check_op(&mut report, "transpose(1,2)", &[2, 3, 4], &td,
+            |x| x.transpose(1, 2).sum_all(), &[1, 8, 22]);
+
+        // 5. reshape
+        check_op(&mut report, "reshape", &[2, 3], &data3,
+            |x| x.reshape(vec![6, 1]).sum_all(), &[0, 4]);
+
+        // 6. rms_norm
+        let rn_data: Vec<f32> = (0..12).map(|i| (i as f32 - 5.5) * 0.7).collect();
+        check_op(&mut report, "rms_norm", &[3, 4], &rn_data,
+            |x| x.rms_norm().sum_all(), &[0, 3, 7, 11]);
+
+        // 7. cross_entropy
+        let ce_data: Vec<f32> = vec![1.0, 2.0, 0.5, -1.0, 0.5, 3.0];
+        check_op(&mut report, "cross_entropy", &[2, 3], &ce_data,
+            |x| x.cross_entropy(&[1, 2]), &[0, 1, 2, 3, 4, 5]);
+
+        // 8. broadcast
+        let big: Vec<f32> = (0..6).map(|i| i as f32 * 0.5).collect();
+        let small = Tensor::from_slice(&[1.0f32, -0.5, 0.3], &[3], false);
+        check_op(&mut report, "broadcast add", &[2, 3], &big,
+            |x| x.add(&small).sum_all(), &[0, 2, 5]);
+
+        // 9. chain operations
+        let chain_data: Vec<f32> = vec![0.5, -1.0, 2.0, 0.1];
+        check_op(&mut report, "chain: relu->pow(2)->mean", &[2, 2], &chain_data,
+            |x| x.relu().pow(2.0).mean_all(), &[0, 1, 2, 3]);
+        check_op(&mut report, "chain: tanh->mul_scalar->sum", &[2, 2], &chain_data,
+            |x| x.tanh().mul_scalar(3.0).sum_all(), &[0, 2]);
+
+        // Print summary and assert
+        println!("\n{}", "-".repeat(60));
+        println!("  PASSED: {}   FAILED: {}", report.passed, report.failed);
+        println!("{}", "-".repeat(60));
+
+        assert_eq!(report.failed, 0, "Gradient checking failed for {} operations", report.failed);
     }
 }

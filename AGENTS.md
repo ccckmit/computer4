@@ -62,8 +62,7 @@ cd tool/regex4 && rustc regex4.rs -o regex4 && ./regex4
 | `media/mpeg1/` | mpeg1_decoder | 2021 | MPEG-1 視訊解碼器（僅 stdlib） |
 | `media/aplayer4/` | aplayer4 | 2024 | 音訊播放器 (rodio + crossterm TUI) |
 | **eda/** | | | |
-| `eda/ruhdl/` | ruhdl | 2021 | 硬體描述函式庫 — prelude 重新匯出 |
-| `eda/verilog4/` | verilog4 | 2021 | Verilog → ruHDL 轉換器 |
+| `eda/verilog2rust/` | verilog2rust | 2021 | Verilog → Rust (rhdl) 轉換器 + rhdl 硬體描述函式庫 |
 | `eda/ic4/` | ic4 | 2021 | IC 設計 — 合成、實體設計、視覺化 |
 | `eda/synthesis/` | synthesis | 2021 | 邏輯合成（HDL→netlist→optimizer→techmap） |
 | `eda/ruspice/` | ruspice | 2021 | SPICE-like 類比電路模擬器 |
