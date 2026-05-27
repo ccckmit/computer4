@@ -127,6 +127,7 @@ const BOX_STSS: u32 = u32::from_be_bytes(*b"stss");
 const BOX_MDAT: u32 = u32::from_be_bytes(*b"mdat");
 const BOX_AVC1: u32 = u32::from_be_bytes(*b"avc1");
 const BOX_AVCC: u32 = u32::from_be_bytes(*b"avcC");
+const BOX_MP4A: u32 = u32::from_be_bytes(*b"mp4a");
 #[allow(dead_code)]
 const BOX_VMHD: u32 = u32::from_be_bytes(*b"vmhd");
 #[allow(dead_code)]
@@ -489,7 +490,7 @@ fn parse_stbl<R: Read + Seek>(
         let (box_type, box_size, _) = read_box_header(br, end_pos)?;
         match box_type {
             BOX_STSD => {
-                parse_stsd(br, box_size, video_width, video_height, avcc_data)?;
+                parse_stsd(br, box_size, video_width, video_height, audio_ch, audio_sr, avcc_data)?;
             }
             BOX_STTS => {
                 br.read_skip(4)?;
@@ -558,6 +559,8 @@ fn parse_stsd<R: Read + Seek>(
     stsd_box_size: u64,
     video_width: &mut Option<u32>,
     video_height: &mut Option<u32>,
+    audio_ch: &mut Option<u32>,
+    audio_sr: &mut Option<u32>,
     avcc_data: &mut Option<Vec<u8>>,
 ) -> Result<()> {
     let stsd_start = br.tell()? - 8;
@@ -595,6 +598,15 @@ fn parse_stsd<R: Read + Seek>(
                     br.read_skip(inner_remaining)?;
                 }
             }
+        } else if box_type == BOX_MP4A {
+            br.read_skip(6 + 2)?;
+            br.read_skip(8)?;
+            let ch = br.read_u16()? as u32;
+            let _sample_size = br.read_u16()?;
+            br.read_skip(2 + 2)?;
+            let sr_raw = br.read_u32()?;
+            *audio_ch = Some(ch);
+            *audio_sr = Some(sr_raw >> 16);
         }
         let consumed = br.tell()? - sub_start;
         let remaining = box_size - consumed;

@@ -16,6 +16,7 @@ fn main() {
                 return;
             }
             // Print AVC config if available
+            #[allow(unused_variables)]
             for (i, tr) in info.tracks.iter().enumerate() {
                 match mp4rs::avc_config(path, i) {
                     Ok(Some(avc)) => {
