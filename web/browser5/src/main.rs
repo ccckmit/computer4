@@ -235,14 +235,8 @@ impl eframe::App for Browser5 {
                     });
 
                     if self.show_console {
-                        ui.group(|ui| {
-                            ui.set_width(ui.available_width());
-                            ui.label(
-                                egui::RichText::new(&self.js_runtime.output)
-                                    .code()
-                                    .color(egui::Color32::LIGHT_GREEN),
-                            );
-                        });
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(&self.js_runtime.output).code().color(egui::Color32::LIGHT_GREEN));
                     }
                 });
 

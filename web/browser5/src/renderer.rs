@@ -182,7 +182,7 @@ impl<'a> Renderer<'a> {
             ui.horizontal(|ui| {
                 ui.add_space(padding_left.max(margin_left));
                 ui.vertical(|ui| {
-                    ui.group(|ui| {
+                    ui.scope(|ui| {
                         ui.set_width(ui.available_width() - padding_left.max(margin_left) - padding_right.max(margin_right));
                         self.render_children(ui, node, style);
                     });
