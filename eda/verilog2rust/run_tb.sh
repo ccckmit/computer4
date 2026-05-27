@@ -15,3 +15,7 @@ for f in verilog/*_tb.v; do
     cargo run -- "$f" "$rhdl"
     cargo run -- "$rhdl"
 done
+
+echo ""
+echo "=== MCU0m Simulation ==="
+cargo run -- verilog/mcu0m/mcu0m_sim.rs

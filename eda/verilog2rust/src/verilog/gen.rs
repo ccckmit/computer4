@@ -1,6 +1,6 @@
 use crate::verilog::ast::*;
 use crate::verilog::parse::eval_const;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn gen_module(m: &Module) -> String {
     let mut out = String::new();
@@ -14,6 +14,8 @@ pub fn gen_module(m: &Module) -> String {
     let mut assigns: Vec<(&Expr, &Expr)> = Vec::new();
     let mut always_blocks: Vec<&AlwaysBlock> = Vec::new();
     let mut initial_blocks: Vec<&Vec<Stmt>> = Vec::new();
+    let mut combo_always: Vec<&AlwaysBlock> = Vec::new();
+    let mut clocked_always: Vec<&AlwaysBlock> = Vec::new();
     let mut integers: Vec<&String> = Vec::new();
 
     for item in &m.items {
@@ -26,6 +28,14 @@ pub fn gen_module(m: &Module) -> String {
             ModuleItem::Assign { lhs, rhs } => assigns.push((lhs, rhs)),
             ModuleItem::Always(a) => always_blocks.push(a),
             ModuleItem::Initial(s) => initial_blocks.push(s),
+        }
+    }
+
+    for ab in &always_blocks {
+        if has_delay_in_stmts(&ab.stmts) {
+            clocked_always.push(ab);
+        } else {
+            combo_always.push(ab);
         }
     }
 
@@ -102,7 +112,9 @@ pub fn gen_module(m: &Module) -> String {
         if !is_port(&m.ports, &v.name) {
             let fname = to_snake(&v.name);
             let w = width_val(&v.width);
-            if w > 1 {
+            if let Some(len) = v.length {
+                out.push_str(&format!("        let {} = (0..{}).map(|_| bus(\"{}\", {})).collect::<Vec<Vec<WireRef>>>();\n", fname, len, fname, w));
+            } else if w > 1 {
                 out.push_str(&format!("        let {} = bus(\"{}\", {});\n", fname, fname, w));
             } else {
                 out.push_str(&format!("        let {} = wire(\"{}\");\n", fname, fname));
@@ -113,7 +125,9 @@ pub fn gen_module(m: &Module) -> String {
         if !is_port(&m.ports, &v.name) {
             let fname = to_snake(&v.name);
             let w = width_val(&v.width);
-            if w > 1 {
+            if let Some(len) = v.length {
+                out.push_str(&format!("        let {} = (0..{}).map(|_| bus(\"{}\", {})).collect::<Vec<Vec<WireRef>>>();\n", fname, len, fname, w));
+            } else if w > 1 {
                 out.push_str(&format!("        let {} = bus(\"{}\", {});\n", fname, fname, w));
             } else {
                 out.push_str(&format!("        let {} = wire(\"{}\");\n", fname, fname));
@@ -160,7 +174,7 @@ pub fn gen_module(m: &Module) -> String {
             match c {
                 Conn::ByOrder(e) | Conn::ByName { wire: e, .. } => {
                     let v = expr_to_var(e, &sizes);
-                    let w = expr_width(e, &sizes);
+                    let w = expr_width(e, &sizes, &decls, &m.params);
                     if w > 1 {
                         format!("{}.clone()", v)
                     } else {
@@ -189,35 +203,84 @@ pub fn gen_module(m: &Module) -> String {
 
     // eval assign statements
     for (lhs, rhs) in &assigns {
-        let lhs_expr = gen_expr_to_set(lhs, rhs, &sizes, &decls, 0, "");
+        let lhs_expr = gen_expr_to_set(lhs, rhs, &sizes, &decls, &m.params, 0, "");
         if !lhs_expr.is_empty() {
             out.push_str(&lhs_expr);
         }
     }
 
-    // eval always blocks
-    for ab in &always_blocks {
+    // eval always blocks (combinatorial — no delays)
+    for ab in &combo_always {
         for s in &ab.stmts {
-            gen_stmt(&mut out, s, &sizes, &decls, 4);
+            gen_stmt(&mut out, s, &sizes, &decls, &m.params, 4);
         }
     }
 
     out.push_str("    }\n");
 
-    // ----- run() method from initial blocks -----
-    if !initial_blocks.is_empty() {
-        out.push_str("    pub fn run(&mut self) {\n");
-        for block in &initial_blocks {
+    // ----- run() method from initial blocks and delayed always blocks -----
+    out.push_str("    pub fn run(&mut self) {\n");
+    for s in &sub_insts {
+        out.push_str(&format!("        self.{}.run();\n", to_snake(&s.instance_name)));
+    }
+    for block in &initial_blocks {
+        if !has_delay_in_stmts(block) {
             for s in *block {
-                gen_stmt(&mut out, s, &sizes, &decls, 8);
+                gen_stmt(&mut out, s, &sizes, &decls, &m.params, 8);
             }
         }
-        out.push_str("    }\n");
     }
+    for ab in &clocked_always {
+        out.push_str("        loop {\n");
+        for s in &ab.stmts {
+            gen_stmt(&mut out, s, &sizes, &decls, &m.params, 12);
+        }
+        out.push_str("        }\n");
+    }
+    for block in &initial_blocks {
+        if has_delay_in_stmts(block) {
+            for s in *block {
+                gen_stmt(&mut out, s, &sizes, &decls, &m.params, 8);
+            }
+        }
+    }
+    out.push_str("    }\n");
 
     out.push_str("}\n\n");
 
     out
+}
+
+fn has_delay_in_stmts(stmts: &[Stmt]) -> bool {
+    for s in stmts {
+        match s {
+            Stmt::DelayStmt { .. } => return true,
+            Stmt::If { then, else_, .. } => {
+                if has_delay_in_stmts(then) || has_delay_in_stmts(else_) {
+                    return true;
+                }
+            }
+            Stmt::Case { items, .. } => {
+                for item in items {
+                    if has_delay_in_stmts(&item.stmts) {
+                        return true;
+                    }
+                }
+            }
+            Stmt::For { stmts, .. } => {
+                if has_delay_in_stmts(stmts) {
+                    return true;
+                }
+            }
+            Stmt::Forever { stmts } => {
+                if has_delay_in_stmts(stmts) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
 }
 
 fn verilog_fmt_to_rust(fmt: &str) -> String {
@@ -227,7 +290,10 @@ fn verilog_fmt_to_rust(fmt: &str) -> String {
         if c == '%' {
             match chars.next() {
                 Some('%') => out.push('%'),
-                Some('d' | 'D' | 'h' | 'H' | 'b' | 'B' | 'o' | 'O') => out.push_str("{}"),
+                Some('d' | 'D') => out.push_str("{}"),
+                Some('h' | 'H' | 'x' | 'X') => out.push_str("{:x}"),
+                Some('b' | 'B') => out.push_str("{:b}"),
+                Some('o' | 'O') => out.push_str("{:o}"),
                 Some('s') => out.push_str("{}"),
                 _ => out.push_str("{}"),
             }
@@ -238,25 +304,25 @@ fn verilog_fmt_to_rust(fmt: &str) -> String {
     out
 }
 
-fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, indent: usize) {
+fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>, indent: usize) {
     let ind = " ".repeat(indent);
     match s {
         Stmt::BlockingAssign { lhs, rhs } | Stmt::NonBlockingAssign { lhs, rhs } => {
-            let lhs_code = gen_expr_to_set(lhs, rhs, sizes, decls, indent, "");
+            let lhs_code = gen_expr_to_set(lhs, rhs, sizes, decls, params, indent, "");
             if !lhs_code.is_empty() {
                 out.push_str(&lhs_code);
             }
         }
         Stmt::If { cond, then, else_ } => {
-            let cond_str = gen_expr_str(cond, sizes, decls);
-            out.push_str(&format!("{}if {} != Level::L {{\n", ind, cond_str));
+            let cond_val = gen_expr_val(cond, sizes, decls, params);
+            out.push_str(&format!("{}if {} != 0 {{\n", ind, cond_val));
             for ss in then {
-                gen_stmt(out, ss, sizes, decls, indent + 4);
+                gen_stmt(out, ss, sizes, decls, params, indent + 4);
             }
             if !else_.is_empty() {
                 out.push_str(&format!("{}}} else {{\n", ind));
                 for ss in else_ {
-                    gen_stmt(out, ss, sizes, decls, indent + 4);
+                    gen_stmt(out, ss, sizes, decls, params, indent + 4);
                 }
                 out.push_str(&format!("{}}}\n", ind));
             } else {
@@ -264,21 +330,21 @@ fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, indent
             }
         }
         Stmt::Case { expr: _expr, items } => {
-            let expr_val = gen_expr_val(_expr, sizes, decls);
+            let expr_val = gen_expr_val(_expr, sizes, decls, params);
             out.push_str(&format!("{}let __case_val = {};\n", ind, expr_val));
             for item in items {
                 if item.exprs.is_empty() {
                     // default
                     out.push_str(&format!("{}// default case\n", ind));
                     for ss in &item.stmts {
-                        gen_stmt(out, ss, sizes, decls, indent);
+                        gen_stmt(out, ss, sizes, decls, params, indent);
                     }
                 } else {
                     for e in &item.exprs {
-                        let ev = gen_expr_val(e, sizes, decls);
+                        let ev = gen_expr_val(e, sizes, decls, params);
                         out.push_str(&format!("{}if __case_val == {} {{\n", ind, ev));
                         for ss in &item.stmts {
-                            gen_stmt(out, ss, sizes, decls, indent + 4);
+                            gen_stmt(out, ss, sizes, decls, params, indent + 4);
                         }
                         out.push_str(&format!("{}}}\n", ind));
                     }
@@ -286,19 +352,19 @@ fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, indent
             }
         }
         Stmt::For { init, cond, inc, stmts } => {
-            gen_stmt(out, init, sizes, decls, indent);
-            let cond_str = gen_expr_str(cond, sizes, decls);
-            out.push_str(&format!("{}while {} != Level::L {{\n", ind, cond_str));
+            gen_stmt(out, init, sizes, decls, params, indent);
+            let cond_val = gen_expr_val(cond, sizes, decls, params);
+            out.push_str(&format!("{}while {} != 0 {{\n", ind, cond_val));
             for ss in stmts {
-                gen_stmt(out, ss, sizes, decls, indent + 4);
+                gen_stmt(out, ss, sizes, decls, params, indent + 4);
             }
-            gen_stmt(out, inc, sizes, decls, indent + 4);
+            gen_stmt(out, inc, sizes, decls, params, indent + 4);
             out.push_str(&format!("{}}}\n", ind));
         }
         Stmt::Forever { stmts } => {
             out.push_str(&format!("{}loop {{\n", ind));
             for ss in stmts {
-                gen_stmt(out, ss, sizes, decls, indent + 4);
+                gen_stmt(out, ss, sizes, decls, params, indent + 4);
             }
             out.push_str(&format!("{}}}\n", ind));
         }
@@ -312,7 +378,7 @@ fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, indent
                         if let Some(fmt_str) = s.strip_prefix("__str:") {
                             let rust_fmt = verilog_fmt_to_rust(fmt_str);
                             let rest: Vec<String> = args[1..].iter().map(|e| {
-                                let v = gen_expr_val(e, sizes, decls);
+                                let v = gen_expr_val(e, sizes, decls, params);
                                 v
                             }).collect();
                             if rest.is_empty() {
@@ -338,13 +404,13 @@ fn gen_stmt(out: &mut String, s: &Stmt, sizes: &SizeMap, decls: &DeclMap, indent
             // In cycle-based simulation, a delay means "evaluate the design"
             out.push_str(&format!("{}self.eval();\n", ind));
             if let Some(inner) = stmt {
-                gen_stmt(out, inner, sizes, decls, indent);
+                gen_stmt(out, inner, sizes, decls, params, indent);
             }
         }
     }
 }
 
-fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, indent: usize, _prefix: &str) -> String {
+fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>, indent: usize, _prefix: &str) -> String {
     use crate::verilog::parse::eval_const;
     let ind = " ".repeat(indent);
     match lhs {
@@ -352,10 +418,10 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
             let lname = to_snake(name);
             let w = sizes.get(&lname).copied().unwrap_or(1);
             if w > 1 {
-                let rhs_code = gen_expr_bus_val(rhs, sizes, decls, w);
+                let rhs_code = gen_expr_bus_val(rhs, sizes, decls, params, w);
                     format!("{}u16_to_bus(&self.{}, ({} & {}) as u16);\n", ind, lname, rhs_code, mask(w))
             } else {
-                let rhs_code = gen_expr_str(rhs, sizes, decls);
+                let rhs_code = gen_expr_str(rhs, sizes, decls, params);
                 format!("{}if get(&self.{}) != {} {{ set(&self.{}, {}); }}\n", ind, lname, rhs_code, lname, rhs_code)
             }
         }
@@ -365,8 +431,7 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
                 let msb_v = eval_const(msb);
                 let lsb_v = eval_const(lsb);
                 let w = (msb_v - lsb_v + 1) as usize;
-                // generate code to set a slice
-                let rhs_code = gen_expr_bus_val(rhs, sizes, decls, w as u64);
+                let rhs_code = gen_expr_bus_val(rhs, sizes, decls, params, w as u64);
                 format!(
                     "{}let __val = {} as u16;\n{}for __i in {}..={} {{\n{}    let __bit = (__val >> (__i - {})) & 1;\n{}    set(&self.{}[__i], if __bit == 1 {{ Level::H }} else {{ Level::L }});\n{}}}\n",
                     ind, rhs_code, ind, lsb_v, msb_v, ind, lsb_v, ind, lname, ind
@@ -377,33 +442,51 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
         }
         Expr::BitSelect { expr, bit } => {
             if let Expr::Ident(name) = expr.as_ref() {
-                let lname = to_snake(name);
-                let bit_v = eval_const(bit);
-                let rhs_code = gen_expr_str(rhs, sizes, decls);
-                format!("{}if get(&self.{}[{}]) != {} {{ set(&self.{}[{}], {}); }}\n", ind, lname, bit_v, rhs_code, lname, bit_v, rhs_code)
+                let aname = to_snake(name);
+                // Check if this is array element assignment
+                if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&aname) {
+                    let w = sizes.get(&aname).copied().unwrap_or(1);
+                    let idx_code = gen_expr_val(bit, sizes, decls, params);
+                    let rhs_code = gen_expr_bus_val(rhs, sizes, decls, params, w);
+                    format!("{}u16_to_bus(&mut self.{}[({}) as usize], ({} & {}) as u16);\n", ind, aname, idx_code, rhs_code, mask(w))
+                } else {
+                    // Traditional bit-select
+                    let bit_v = eval_const(bit);
+                    let rhs_code = gen_expr_str(rhs, sizes, decls, params);
+                    format!("{}if get(&self.{}[{}]) != {} {{ set(&self.{}[{}], {}); }}\n", ind, aname, bit_v, rhs_code, aname, bit_v, rhs_code)
+                }
             } else {
                 String::new()
             }
         }
         Expr::Concat(items) => {
-            // assign to concatenation of signals
-            // For now, generate assignments for each element
             let mut code = String::new();
-            // compute total width
             let mut total_w = 0u64;
             let mut widths = Vec::new();
             for item in items {
-                let w = expr_width(item, sizes);
+                let w = expr_width(item, sizes, decls, params);
                 widths.push(w);
                 total_w += w;
             }
-            let rhs_code = gen_expr_bus_val(rhs, sizes, decls, total_w);
+            let rhs_code = gen_expr_bus_val(rhs, sizes, decls, params, total_w);
             code.push_str(&format!("{}let __concat_val = {};\n", ind, rhs_code));
             let mut offset = 0;
             for (i, item) in items.iter().enumerate() {
                 let w = widths[i];
                 if w > 1 {
-                    if let Expr::Ident(name) = item {
+                    // For array elements or bus signals
+                    if let Expr::BitSelect { expr, bit } = item {
+                        if let Expr::Ident(name) = expr.as_ref() {
+                            let aname = to_snake(name);
+                            if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&aname) {
+                                let idx_code = gen_expr_val(bit, sizes, decls, params);
+                                code.push_str(&format!(
+                                    "{}for __j in 0..{} {{\n{}    let __b = (__concat_val >> ({} + __j)) & 1;\n{}    set(&self.{}[({}) as usize][__j], if __b == 1 {{ Level::H }} else {{ Level::L }});\n{}}}\n",
+                                    ind, w, ind, offset, ind, aname, idx_code, ind
+                                ));
+                            }
+                        }
+                    } else if let Expr::Ident(name) = item {
                         let lname = to_snake(name);
                         code.push_str(&format!(
                             "{}for __j in 0..{} {{\n{}    let __b = (__concat_val >> ({} + __j)) & 1;\n{}    set(&self.{}[__j], if __b == 1 {{ Level::H }} else {{ Level::L }});\n{}}}\n",
@@ -411,7 +494,18 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
                         ));
                     }
                 } else {
-                    if let Expr::Ident(name) = item {
+                    if let Expr::BitSelect { expr, bit } = item {
+                        if let Expr::Ident(name) = expr.as_ref() {
+                            let aname = to_snake(name);
+                            if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&aname) {
+                                let idx_code = gen_expr_val(bit, sizes, decls, params);
+                                code.push_str(&format!(
+                                    "{}set(&self.{}[({}) as usize][0], if (__concat_val >> {}) & 1 == 1 {{ Level::H }} else {{ Level::L }});\n",
+                                    ind, aname, idx_code, offset
+                                ));
+                            }
+                        }
+                    } else if let Expr::Ident(name) = item {
                         let lname = to_snake(name);
                         code.push_str(&format!(
                             "{}set(&self.{}, if (__concat_val >> {}) & 1 == 1 {{ Level::H }} else {{ Level::L }});\n",
@@ -427,10 +521,10 @@ fn gen_expr_to_set(lhs: &Expr, rhs: &Expr, sizes: &SizeMap, decls: &DeclMap, ind
     }
 }
 
-fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
+fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>) -> String {
     match expr {
         Expr::Number(n) => {
-            let w = expr_width(expr, sizes);
+            let w = expr_width(expr, sizes, decls, params);
             if w > 1 {
                 format!("({} & {}) as u64", n.value, mask(w))
             } else if n.value == 0 {
@@ -440,6 +534,10 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Ident(name) => {
+            // Check if it's a parameter
+            if let Some(val) = params.get(name) {
+                return format!("({}u64) & {}", val, mask(if *val == 0 { 1 } else { 64 - val.leading_zeros() as u64 }.max(1)));
+            }
             let n = to_snake(name);
             let w = sizes.get(&n).copied().unwrap_or(1);
             if w > 1 {
@@ -449,17 +547,17 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Binary { op, lhs, rhs } => {
-            let l = gen_expr_str(lhs, sizes, decls);
-            let r = gen_expr_str(rhs, sizes, decls);
-            let lw = expr_width(lhs, sizes);
-            let rw = expr_width(rhs, sizes);
+            let l = gen_expr_str(lhs, sizes, decls, params);
+            let r = gen_expr_str(rhs, sizes, decls, params);
+            let lw = expr_width(lhs, sizes, decls, params);
+            let rw = expr_width(rhs, sizes, decls, params);
             let w = std::cmp::max(lw, rw);
             match op {
                 BinaryOp::Add => {
                     if w > 1 {
                         format!("({} + {}) & {}", l, r, mask(w))
                     } else {
-                        format!("{}.xor({})", l, r) // simple bitwise for single bit
+                        format!("{}.xor({})", l, r)
                     }
                 }
                 BinaryOp::Sub => {
@@ -478,12 +576,12 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
                 BinaryOp::BitXor => {
                     if w > 1 { format!("{} ^ {}", l, r) } else { format!("{}.xor({})", l, r) }
                 }
-                BinaryOp::Lt => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) < ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
-                BinaryOp::Leq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) <= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
-                BinaryOp::Gt => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) > ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
-                BinaryOp::Geq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) >= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
-                BinaryOp::Eq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) == ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
-                BinaryOp::Neq => { let l = gen_expr_val(lhs, sizes, decls); let r = gen_expr_val(rhs, sizes, decls); format!("if ({}) != ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Lt => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) < ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Leq => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) <= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Gt => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) > ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Geq => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) >= ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Eq => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) == ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
+                BinaryOp::Neq => { let l = gen_expr_val(lhs, sizes, decls, params); let r = gen_expr_val(rhs, sizes, decls, params); format!("if ({}) != ({}) {{ Level::H }} else {{ Level::L }}", l, r) },
                 BinaryOp::Shl => format!("{} << {}", l, r),
                 BinaryOp::Shr => format!("{} >> {}", l, r),
                 BinaryOp::Sshl => format!("{} << {}", l, r),
@@ -503,8 +601,8 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Unary { op, expr } => {
-            let e = gen_expr_str(expr, sizes, decls);
-            let w = expr_width(expr, sizes);
+            let e = gen_expr_str(expr, sizes, decls, params);
+            let w = expr_width(expr, sizes, decls, params);
             match op {
                 UnaryOp::Minus => {
                     if w > 1 { format!("(!{} + 1) & {}", e, mask(w)) }
@@ -521,7 +619,6 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
                 UnaryOp::ReduceAnd => format!("if {} == {} {{ 1u16 }} else {{ 0u16 }}", e, mask(w)),
                 UnaryOp::ReduceOr => format!("if {} != 0 {{ 1u16 }} else {{ 0u16 }}", e),
                 UnaryOp::ReduceXor => {
-                    // compute parity
                     format!("({}).count_ones() & 1", e)
                 }
                 _ => e,
@@ -530,8 +627,8 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
         Expr::Concat(items) => {
             let mut total_w = 0u64;
             let parts: Vec<String> = items.iter().rev().map(|item| {
-                let w = expr_width(item, sizes);
-                let s = gen_expr_str(item, sizes, decls);
+                let w = expr_width(item, sizes, decls, params);
+                let s = gen_expr_str(item, sizes, decls, params);
                 let part = if w > 1 {
                     format!("({}) as u64", s)
                 } else {
@@ -548,11 +645,11 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             if parts.is_empty() { "0".to_string() } else { parts.join(" | ") }
         }
         Expr::Replicate { count, expr } => {
-            let w = expr_width(expr, sizes);
-            let e = gen_expr_str(expr, sizes, decls);
+            let w = expr_width(expr, sizes, decls, params);
+            let e = gen_expr_str(expr, sizes, decls, params);
             let total_w = w * count;
             if total_w > 16 {
-                format!("({} as u64).wrapping_mul({}u64.pow({}))", e, 2u64, w) // simplified
+                format!("({} as u64).wrapping_mul({}u64.pow({}))", e, 2u64, w)
             } else {
                 let mut v = format!("{}", e);
                 for _ in 1..*count {
@@ -562,7 +659,7 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Select { expr, msb, lsb } => {
-            let e = gen_expr_str(expr, sizes, decls);
+            let e = gen_expr_str(expr, sizes, decls, params);
             let msb_v = eval_const(msb);
             let lsb_v = eval_const(lsb);
             let w = msb_v - lsb_v + 1;
@@ -573,23 +670,46 @@ fn gen_expr_str(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::BitSelect { expr, bit } => {
-            let e = gen_expr_str(expr, sizes, decls);
-            let b = eval_const(bit);
-            format!("({} >> {}) & 1", e, b)
+            if let Expr::Ident(name) = expr.as_ref() {
+                let aname = to_snake(name);
+                if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&aname) {
+                    // Array element access: return whole bus
+                    let w = sizes.get(&aname).copied().unwrap_or(1);
+                    let idx_code = gen_expr_val(bit, sizes, decls, params);
+                    if w > 1 {
+                        format!("bus_to_u16(&self.{}[({}) as usize])", aname, idx_code)
+                    } else {
+                        format!("get(&self.{}[({}) as usize])", aname, idx_code)
+                    }
+                } else {
+                    // Traditional bit-select (requires const bit)
+                    let e = gen_expr_str(expr, sizes, decls, params);
+                    let b = eval_const(bit);
+                    format!("({} >> {}) & 1", e, b)
+                }
+            } else {
+                let e = gen_expr_str(expr, sizes, decls, params);
+                let b = eval_const(bit);
+                format!("({} >> {}) & 1", e, b)
+            }
         }
         Expr::Cond { cond, if_true, if_false } => {
-            let c = gen_expr_str(cond, sizes, decls);
-            let t = gen_expr_str(if_true, sizes, decls);
-            let f = gen_expr_str(if_false, sizes, decls);
+            let c = gen_expr_str(cond, sizes, decls, params);
+            let t = gen_expr_str(if_true, sizes, decls, params);
+            let f = gen_expr_str(if_false, sizes, decls, params);
             format!("if {} != Level::L {{ {} }} else {{ {} }}", c, t, f)
         }
     }
 }
 
-fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
+fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>) -> String {
     match expr {
         Expr::Number(n) => n.value.to_string(),
         Expr::Ident(name) => {
+            // Check if it's a parameter
+            if let Some(val) = params.get(name) {
+                return format!("{}u64", val);
+            }
             let n = to_snake(name);
             let w = sizes.get(&n).copied().unwrap_or(1);
             if w > 1 {
@@ -599,10 +719,10 @@ fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Binary { op, lhs, rhs } => {
-            let l = gen_expr_val(lhs, sizes, decls);
-            let r = gen_expr_val(rhs, sizes, decls);
-            let lw = expr_width(lhs, sizes);
-            let rw = expr_width(rhs, sizes);
+            let l = gen_expr_val(lhs, sizes, decls, params);
+            let r = gen_expr_val(rhs, sizes, decls, params);
+            let lw = expr_width(lhs, sizes, decls, params);
+            let rw = expr_width(rhs, sizes, decls, params);
             let w = std::cmp::max(lw, rw);
             match op {
                 BinaryOp::Add => format!("({} + {}) & {}", l, r, mask(w)),
@@ -629,8 +749,8 @@ fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             }
         }
         Expr::Unary { op, expr } => {
-            let e = gen_expr_val(expr, sizes, decls);
-            let w = expr_width(expr, sizes);
+            let e = gen_expr_val(expr, sizes, decls, params);
+            let w = expr_width(expr, sizes, decls, params);
             match op {
                 UnaryOp::Minus => format!("((!{}) + 1) & {}", e, mask(w)),
                 UnaryOp::BitNot => format!("!{}", e),
@@ -643,33 +763,50 @@ fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
         }
         Expr::Concat(items) => {
             let parts: Vec<String> = items.iter().rev().map(|item| {
-                let w = expr_width(item, sizes);
-                let v = gen_expr_val(item, sizes, decls);
-                format!("({}) & {}", v, mask(w))
+                let w = expr_width(item, sizes, decls, params);
+                let v = gen_expr_val(item, sizes, decls, params);
+                format!("(({}) & {})", v, mask(w))
             }).collect();
             let mut total = 0u64;
             let mut res = String::new();
             for (i, p) in parts.iter().enumerate() {
                 if i > 0 { res.push_str(" | "); }
                 res.push_str(&format!("({} << {})", p, total));
-                total += expr_width(&items[items.len() - 1 - i], sizes);
+                total += expr_width(&items[items.len() - 1 - i], sizes, decls, params);
             }
             if res.is_empty() { "0".to_string() } else { res }
         }
         Expr::Select { expr, msb, lsb } => {
-            let e = gen_expr_val(expr, sizes, decls);
+            let e = gen_expr_val(expr, sizes, decls, params);
             let msb_v = eval_const(msb);
             let lsb_v = eval_const(lsb);
             format!("({} >> {}) & {}", e, lsb_v, mask(msb_v - lsb_v + 1))
         }
         Expr::BitSelect { expr, bit } => {
-            let e = gen_expr_val(expr, sizes, decls);
-            let b = eval_const(bit);
-            format!("({} >> {}) & 1", e, b)
+            if let Expr::Ident(name) = expr.as_ref() {
+                let aname = to_snake(name);
+                if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&aname) {
+                    let w = sizes.get(&aname).copied().unwrap_or(1);
+                    let idx_code = gen_expr_val(bit, sizes, decls, params);
+                    if w > 1 {
+                        format!("bus_to_u16(&self.{}[({}) as usize]) as u64", aname, idx_code)
+                    } else {
+                        format!("get(&self.{}[({}) as usize]) as u64", aname, idx_code)
+                    }
+                } else {
+                    let e = gen_expr_val(expr, sizes, decls, params);
+                    let b = eval_const(bit);
+                    format!("({} >> {}) & 1", e, b)
+                }
+            } else {
+                let e = gen_expr_val(expr, sizes, decls, params);
+                let b = eval_const(bit);
+                format!("({} >> {}) & 1", e, b)
+            }
         }
         Expr::Replicate { count, expr } => {
-            let w = expr_width(expr, sizes);
-            let e = gen_expr_val(expr, sizes, decls);
+            let w = expr_width(expr, sizes, decls, params);
+            let e = gen_expr_val(expr, sizes, decls, params);
             let mut v = e.clone();
             for _ in 1..*count {
                 v = format!("({} << {}) | ({})", v, w, e);
@@ -677,16 +814,16 @@ fn gen_expr_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap) -> String {
             v
         }
         Expr::Cond { cond, if_true, if_false } => {
-            let c = gen_expr_val(cond, sizes, decls);
-            let t = gen_expr_val(if_true, sizes, decls);
-            let f = gen_expr_val(if_false, sizes, decls);
+            let c = gen_expr_val(cond, sizes, decls, params);
+            let t = gen_expr_val(if_true, sizes, decls, params);
+            let f = gen_expr_val(if_false, sizes, decls, params);
             format!("if {} != 0 {{ {} }} else {{ {} }}", c, t, f)
         }
     }
 }
 
-fn gen_expr_bus_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap, width: u64) -> String {
-    let s = gen_expr_val(expr, sizes, decls);
+fn gen_expr_bus_val(expr: &Expr, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>, width: u64) -> String {
+    let s = gen_expr_val(expr, sizes, decls, params);
     if width <= 16 {
         s
     } else {
@@ -733,6 +870,7 @@ type SizeMap = std::collections::HashMap<String, u64>;
 struct DeclInfo {
     kind: DeclKind,
     width: Option<Range>,
+    length: Option<u64>,  // array dimension, None for scalar
 }
 
 #[derive(Clone)]
@@ -747,16 +885,16 @@ fn build_decl_map<'a>(
 ) -> DeclMap {
     let mut m = DeclMap::new();
     for p in ports {
-        m.insert(to_snake(&p.name), DeclInfo { kind: DeclKind::Port(p.direction), width: p.width.clone() });
+        m.insert(to_snake(&p.name), DeclInfo { kind: DeclKind::Port(p.direction), width: p.width.clone(), length: None });
     }
     for v in wires {
-        m.insert(to_snake(&v.name), DeclInfo { kind: DeclKind::Wire, width: v.width.clone() });
+        m.insert(to_snake(&v.name), DeclInfo { kind: DeclKind::Wire, width: v.width.clone(), length: v.length });
     }
     for v in regs {
-        m.insert(to_snake(&v.name), DeclInfo { kind: DeclKind::Reg, width: v.width.clone() });
+        m.insert(to_snake(&v.name), DeclInfo { kind: DeclKind::Reg, width: v.width.clone(), length: v.length });
     }
     for n in integers {
-        m.insert(to_snake(n), DeclInfo { kind: DeclKind::Integer, width: None });
+        m.insert(to_snake(n), DeclInfo { kind: DeclKind::Integer, width: None, length: None });
     }
     m
 }
@@ -781,17 +919,34 @@ fn width_val(w: &Option<Range>) -> u64 {
     }
 }
 
-fn expr_width(e: &Expr, sizes: &SizeMap) -> u64 {
+fn expr_width(e: &Expr, sizes: &SizeMap, decls: &DeclMap, params: &HashMap<String,u64>) -> u64 {
     match e {
         Expr::Number(n) => n.width.unwrap_or_else(|| { let v = n.value; if v == 0 { 1 } else { 64 - v.leading_zeros() as u64 }.max(1) }),
-        Expr::Ident(name) => sizes.get(&to_snake(name)).copied().unwrap_or(1),
-        Expr::Binary { lhs, rhs, .. } => std::cmp::max(expr_width(lhs, sizes), expr_width(rhs, sizes)),
-        Expr::Unary { expr, .. } => expr_width(expr, sizes),
-        Expr::Concat(items) => items.iter().map(|i| expr_width(i, sizes)).sum(),
-        Expr::Replicate { count, expr } => count * expr_width(expr, sizes),
+        Expr::Ident(name) => {
+            // Check if it's a parameter
+            if let Some(val) = params.get(name) {
+                return if *val == 0 { 1 } else { 64 - val.leading_zeros() as u64 }.max(1);
+            }
+            sizes.get(&to_snake(name)).copied().unwrap_or(1)
+        }
+        Expr::Binary { lhs, rhs, .. } => std::cmp::max(expr_width(lhs, sizes, decls, params), expr_width(rhs, sizes, decls, params)),
+        Expr::Unary { expr, .. } => expr_width(expr, sizes, decls, params),
+        Expr::Concat(items) => items.iter().map(|i| expr_width(i, sizes, decls, params)).sum(),
+        Expr::Replicate { count, expr } => count * expr_width(expr, sizes, decls, params),
         Expr::Select { msb, lsb, .. } => eval_const(msb) - eval_const(lsb) + 1,
-        Expr::BitSelect { .. } => 1,
-        Expr::Cond { if_true, if_false, .. } => std::cmp::max(expr_width(if_true, sizes), expr_width(if_false, sizes)),
+        Expr::BitSelect { expr, .. } => {
+            // Array element access returns element width; single bit-select returns 1
+            if let Expr::Ident(name) = expr.as_ref() {
+                if let Some(DeclInfo { length: Some(_), .. }) = decls.get(&to_snake(name)) {
+                    sizes.get(&to_snake(name)).copied().unwrap_or(1)
+                } else {
+                    1
+                }
+            } else {
+                1
+            }
+        }
+        Expr::Cond { if_true, if_false, .. } => std::cmp::max(expr_width(if_true, sizes, decls, params), expr_width(if_false, sizes, decls, params)),
     }
 }
 
@@ -818,8 +973,10 @@ fn port_type(p: &Port, sizes: &SizeMap) -> String {
 fn var_type(v: &VarDecl, sizes: &SizeMap) -> String {
     let sn = to_snake(&v.name);
     let w = sizes.get(&sn).copied().unwrap_or(1);
-    if w > 1 {
-        format!("Vec<WireRef>")
+    if v.length.is_some() {
+        "Vec<Vec<WireRef>>".to_string()
+    } else if w > 1 {
+        "Vec<WireRef>".to_string()
     } else {
         "WireRef".to_string()
     }

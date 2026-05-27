@@ -52,6 +52,8 @@ impl FullAdder {
         self.u4.eval();
         self.u5.eval();
     }
+    pub fn run(&mut self) {
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +99,12 @@ impl Adder4 {
         self.fa2.eval();
         self.fa3.eval();
     }
+    pub fn run(&mut self) {
+        self.fa0.run();
+        self.fa1.run();
+        self.fa2.run();
+        self.fa3.run();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +139,7 @@ impl Adder4Tb {
         self.dut.eval();
     }
     pub fn run(&mut self) {
+        self.dut.run();
         println!("=== Adder4 Testbench ===");
         u16_to_bus(&self.a, (3 & 15u64) as u16);
         u16_to_bus(&self.b, (5 & 15u64) as u16);
