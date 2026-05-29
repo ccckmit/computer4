@@ -14,6 +14,7 @@ use crate::log::Operation;
 use crate::memlayout::{TRAMPOLINE, TRAPFRAME, kstack};
 use crate::param::{NCPU, NKSTACK_PAGES, NOFILE, NPROC, ROOTDEV};
 use crate::riscv::{PGSIZE, PTE_R, PTE_W, PTE_X, interrupts, registers::tp};
+use crate::signal::{self, NSIG};
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::swtch::swtch;
 use crate::sync::OnceLock;
@@ -339,6 +340,10 @@ pub struct ProcInner {
     pub xstate: isize,
     /// Process ID
     pub pid: Pid,
+    /// Pending signal bitmask (1-indexed, bit N-1 = signal N)
+    pub pending: u32,
+    /// Blocked signal bitmask
+    pub blocked: u32,
 }
 
 impl ProcInner {
@@ -349,12 +354,14 @@ impl ProcInner {
             killed: false,
             xstate: 0,
             pid: Pid(0),
+            pending: 0,
+            blocked: 0,
         }
     }
 }
 
 /// Private fields for Proc
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ProcData {
     /// Virtual address of kernel stack
     pub kstack: VA,
@@ -372,6 +379,12 @@ pub struct ProcData {
     pub cwd: Inode,
     /// Process name
     pub name: String,
+    /// Signal handlers (0=SIG_DFL, 1=SIG_IGN, else user function)
+    pub sig_handlers: [usize; NSIG],
+    /// sigaction flags per signal
+    pub sig_flags: [u32; NSIG],
+    /// sigaction mask per signal
+    pub sig_masks: [u32; NSIG],
 }
 
 impl ProcData {
@@ -385,6 +398,9 @@ impl ProcData {
             open_files: [const { None }; NOFILE],
             cwd: Inode::new(0, 0, 0),
             name: String::new(),
+            sig_handlers: [const { 0usize }; NSIG],
+            sig_flags: [const { 0u32 }; NSIG],
+            sig_masks: [const { 0u32 }; NSIG],
         }
     }
 
@@ -507,9 +523,14 @@ impl Proc {
         data.size = 0;
         inner.pid = Pid(0);
         data.name.clear();
+        data.sig_handlers = [const { 0usize }; NSIG];
+        data.sig_flags = [const { 0u32 }; NSIG];
+        data.sig_masks = [const { 0u32 }; NSIG];
         inner.channel = None;
         inner.killed = false;
         inner.xstate = 0;
+        inner.pending = 0;
+        inner.blocked = 0;
         inner.state = ProcState::Unused;
     }
 
@@ -1153,11 +1174,16 @@ pub fn wakeup(channel: Channel) {
 /// Kills the process with the given pid.
 ///
 /// The victim won't exit until it tries to return to user space (see `usertrap()` in trap.rs).
-pub fn kill(pid: Pid) -> bool {
+pub fn kill(pid: Pid, sig: u32) -> bool {
     for proc in PROC_TABLE.iter() {
         let mut inner = proc.inner.lock();
         if inner.state != ProcState::Unused && inner.pid == pid {
-            inner.killed = true;
+            if sig == 9 || signal::default_action(sig) == signal::SigDefault::Terminate {
+                inner.killed = true;
+            }
+            if sig > 0 && sig < NSIG as u32 {
+                inner.pending |= signal::sigbit(sig);
+            }
 
             if inner.state == ProcState::Sleeping {
                 // wakeup process from `sleep()`

@@ -3,8 +3,10 @@ use alloc::vec;
 use crate::memlayout::QEMU_POWER;
 use crate::proc::{self, Channel, Pid, current_proc};
 use crate::rng::rand_bytes;
+use crate::signal::{self, SigAction, NSIG, SIG_BLOCK, SIG_SETMASK, SIG_UNBLOCK};
 use crate::syscall::{Errno, SyscallArgs};
 use crate::trap::TICKS;
+use crate::vm::VA;
 
 pub fn sys_exit(args: &SyscallArgs) -> ! {
     let n = args.get_int(0);
@@ -60,9 +62,14 @@ pub fn sys_sleep(args: &SyscallArgs) -> Result<usize, Errno> {
 
 pub fn sys_kill(args: &SyscallArgs) -> Result<usize, Errno> {
     let pid = args.get_int(0);
+    let sig = args.get_raw(1) as u32;
 
     // Safety: kernel will return an error if the process does not exist.
-    if proc::kill(unsafe { Pid::from_usize(pid as usize) }) {
+    if sig >= NSIG as u32 {
+        return Err(Errno::EINVAL);
+    }
+
+    if proc::kill(unsafe { Pid::from_usize(pid as usize) }, sig) {
         Ok(0)
     } else {
         Err(Errno::ESRCH)

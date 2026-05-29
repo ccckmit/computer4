@@ -205,7 +205,7 @@ impl Console {
             // kill the process if any
             c if c == ctrl(b'C') => {
                 if let Some(pid) = console.foreground_pid {
-                    proc::kill(pid);
+                    proc::kill(pid, 2); // SIGINT
                 }
             }
 
