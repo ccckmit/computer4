@@ -31,11 +31,11 @@ fn main() {
     for arg in &args[1..] {
         match arg.as_str() {
             "-a" => { all = true; }
-            "-s" | "--kernel-name" => { show_sysname = true; all = false; }
-            "-n" | "--nodename" => { show_nodename = true; all = false; }
-            "-r" | "--kernel-release" => { show_release = true; all = false; }
-            "-v" | "--kernel-version" => { show_version = true; all = false; }
-            "-m" | "--machine" => { show_machine = true; all = false; }
+            "-s" | "--kernel-name" => { show_sysname = true; }
+            "-n" | "--nodename" => { show_nodename = true; }
+            "-r" | "--kernel-release" => { show_release = true; }
+            "-v" | "--kernel-version" => { show_version = true; }
+            "-m" | "--machine" => { show_machine = true; }
             _ => {
                 eprintln!("uname: invalid option -- '{}'", arg);
                 std::process::exit(1);

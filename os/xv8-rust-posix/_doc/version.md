@@ -19,14 +19,14 @@
 
 > 導入 POSIX errno，重新定義系統呼叫編號與引數慣例。
 
-- [ ] errno 取代 xv7 自訂 `SysError`
-- [ ] 系統呼叫編號對齊 POSIX 標準（或自訂但公開且穩定）
-- [ ] 統一回傳慣例：`a0 = 0` 成功，`a0 < 0` 為 `-errno`
-- [ ] 新增 `syscall_table` 取代 match
-- [ ] 撰寫 POSIX 相容性測試（`_posix_fd`、`_posix_proc`…）
-- [ ] 更新 `user/src/syscall.rs` 包裝層
+- [x] errno 取代 xv7 自訂 `SysError`
+- [x] 系統呼叫編號對齊 POSIX 標準（或自訂但公開且穩定）
+- [x] 統一回傳慣例：`a0 = 0` 成功，`a0 < 0` 為 `-errno`
+- [x] 新增 `syscall_table` 取代 match
+- [x] 撰寫 POSIX 相容性測試（`_posix_base`）
+- [x] 更新 `user/src/syscall.rs` 包裝層
 
-**交付：** `_posix_baseline` 測試通過。xv7 舊使用者程式需修改才能編譯。
+**交付：** `_posix_base` 測試通過。xv7 舊使用者程式需修改才能編譯。
 
 ---
 
