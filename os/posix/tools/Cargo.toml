@@ -246,3 +246,145 @@ path = "src/bin/unexpand.rs"
 [[bin]]
 name = "sh"
 path = "src/bin/sh.rs"
+
+# ─── v0.8: Small Output Tools ────────────────────────────────────────────
+
+[[bin]]
+name = "printf"
+path = "src/bin/printf.rs"
+
+[[bin]]
+name = "expr"
+path = "src/bin/expr.rs"
+
+[[bin]]
+name = "pwd"
+path = "src/bin/pwd.rs"
+
+[[bin]]
+name = "tty"
+path = "src/bin/tty.rs"
+
+[[bin]]
+name = "logname"
+path = "src/bin/logname.rs"
+
+[[bin]]
+name = "logger"
+path = "src/bin/logger.rs"
+
+# ─── v0.9: File System Tools ────────────────────────────────────────────
+
+[[bin]]
+name = "file"
+path = "src/bin/file.rs"
+
+[[bin]]
+name = "chgrp"
+path = "src/bin/chgrp.rs"
+
+[[bin]]
+name = "link"
+path = "src/bin/link.rs"
+
+[[bin]]
+name = "unlink"
+path = "src/bin/unlink.rs"
+
+[[bin]]
+name = "mkfifo"
+path = "src/bin/mkfifo.rs"
+
+[[bin]]
+name = "pathchk"
+path = "src/bin/pathchk.rs"
+
+# ─── v0.10: Text Merge / Split Tools ────────────────────────────────────
+
+[[bin]]
+name = "join"
+path = "src/bin/join.rs"
+
+[[bin]]
+name = "paste"
+path = "src/bin/paste.rs"
+
+[[bin]]
+name = "split"
+path = "src/bin/split.rs"
+
+[[bin]]
+name = "strings"
+path = "src/bin/strings.rs"
+
+[[bin]]
+name = "cksum"
+path = "src/bin/cksum.rs"
+
+[[bin]]
+name = "tsort"
+path = "src/bin/tsort.rs"
+
+# ─── v0.11: Shell Auxiliary Tools ───────────────────────────────────────
+
+[[bin]]
+name = "time"
+path = "src/bin/time_.rs"
+
+[[bin]]
+name = "renice"
+path = "src/bin/renice.rs"
+
+[[bin]]
+name = "wait"
+path = "src/bin/wait.rs"
+
+[[bin]]
+name = "umask"
+path = "src/bin/umask.rs"
+
+[[bin]]
+name = "hash"
+path = "src/bin/hash.rs"
+
+[[bin]]
+name = "type"
+path = "src/bin/type_.rs"
+
+[[bin]]
+name = "command"
+path = "src/bin/command.rs"
+
+[[bin]]
+name = "alias"
+path = "src/bin/alias.rs"
+
+[[bin]]
+name = "unalias"
+path = "src/bin/unalias.rs"
+
+# ─── v0.12: Terminal / User Tools ───────────────────────────────────────
+
+[[bin]]
+name = "more"
+path = "src/bin/more.rs"
+
+[[bin]]
+name = "dd"
+path = "src/bin/dd.rs"
+
+[[bin]]
+name = "tabs"
+path = "src/bin/tabs.rs"
+
+[[bin]]
+name = "tput"
+path = "src/bin/tput.rs"
+
+[[bin]]
+name = "mesg"
+path = "src/bin/mesg.rs"
+
+[[bin]]
+name = "write"
+path = "src/bin/write_.rs"

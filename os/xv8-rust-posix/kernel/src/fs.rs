@@ -226,6 +226,66 @@ pub struct Stat {
     pub r#type: InodeType,
     pub nlink: u16,
     pub size: u64,
+    pub mode: u16,
+    pub uid: u32,
+    pub gid: u32,
+    pub blksize: u32,
+    pub blocks: u64,
+    pub atim_sec: i64,
+    pub atim_nsec: i64,
+    pub mtim_sec: i64,
+    pub mtim_nsec: i64,
+    pub ctim_sec: i64,
+    pub ctim_nsec: i64,
+}
+
+/// Directory entry type for getdents syscall
+#[repr(C)]
+#[derive(Debug, Clone, Default)]
+pub struct Dirent {
+    pub inum: u16,
+    pub name: [u8; DIRSIZE],
+}
+
+impl Dirent {
+    pub const SIZE: usize = size_of::<Self>();
+
+    pub fn name_as_str(&self) -> &str {
+        let end = self.name.iter().position(|&c| c == 0).unwrap_or(DIRSIZE);
+        core::str::from_utf8(&self.name[..end]).unwrap_or("")
+    }
+}
+
+impl<'a> From<&'a Directory> for Dirent {
+    fn from(d: &'a Directory) -> Self {
+        Self {
+            inum: d.inum,
+            name: d.name,
+        }
+    }
+}
+
+/// POSIX st_mode constants
+pub mod mode {
+    use super::InodeType;
+
+    pub const S_IFMT: u16   = 0o170000;
+    pub const S_IFDIR: u16  = 0o040000;
+    pub const S_IFCHR: u16  = 0o020000;
+    pub const S_IFBLK: u16  = 0o060000;
+    pub const S_IFREG: u16  = 0o100000;
+    pub const S_IFIFO: u16  = 0o010000;
+    pub const S_IFLNK: u16  = 0o120000;
+    pub const S_IFSOCK: u16 = 0o140000;
+
+    pub fn from_type(r#type: InodeType) -> u16 {
+        match r#type {
+            InodeType::Directory => S_IFDIR | 0o755,
+            InodeType::File => S_IFREG | 0o644,
+            InodeType::Device => S_IFCHR | 0o666,
+            InodeType::Free => 0,
+        }
+    }
 }
 
 /// Cached inode data, protected by sleeplock
@@ -583,12 +643,28 @@ impl Inode {
     }
 
     pub fn stat(&self, inner: &SleepLockGuard<'_, InodeInner>) -> Stat {
+        let blocks = if inner.size == 0 {
+            0
+        } else {
+            (inner.size as u64 + BSIZE as u64 - 1) / BSIZE as u64
+        };
         Stat {
             dev: self.dev,
             r#type: inner.r#type,
             nlink: inner.nlink,
             size: inner.size as u64,
             ino: self.inum,
+            mode: mode::from_type(inner.r#type),
+            uid: 0,
+            gid: 0,
+            blksize: BSIZE as u32,
+            blocks,
+            atim_sec: 0,
+            atim_nsec: 0,
+            mtim_sec: 0,
+            mtim_nsec: 0,
+            ctim_sec: 0,
+            ctim_nsec: 0,
         }
     }
 
@@ -822,7 +898,7 @@ impl Directory {
         }
     }
 
-    fn from_bytes(bytes: &[u8; Self::SIZE]) -> Self {
+    pub(crate) fn from_bytes(bytes: &[u8; Self::SIZE]) -> Self {
         unsafe { ptr::read_unaligned(bytes.as_ptr() as *const Self) }
     }
 

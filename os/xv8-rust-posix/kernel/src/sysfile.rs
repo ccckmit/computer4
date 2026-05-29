@@ -2,15 +2,17 @@ use core::mem;
 use core::slice;
 
 use alloc::string::String;
+use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::abi::OpenFlag;
 use crate::exec::exec;
 use crate::file::{FILE_TABLE, File, FileType};
-use crate::fs::{Directory, Inode, InodeType, Path};
+use crate::fs::{Dirent, Directory, Inode, InodeType, Path};
 use crate::log::Operation;
-use crate::param::{MAXARG, MAXPATH, NDEV};
+use crate::param::{MAXARG, MAXPATH, NDEV, NOFILE};
 use crate::pipe::Pipe;
+use crate::proc;
 use crate::proc::current_proc_and_data_mut;
 use crate::riscv::PGSIZE;
 use crate::syscall::{Errno, SyscallArgs};
@@ -431,3 +433,313 @@ pub fn sys_ioctl(args: &SyscallArgs) -> Result<usize, Errno> {
     let (_, file) = try_log!(args.get_file(0));
     log!(file.ioctl(ioctl_cmd, ioctl_arg))
 }
+
+pub fn sys_lseek(args: &SyscallArgs) -> Result<usize, Errno> {
+    let offset = args.get_int(1) as i64;
+    let whence = args.get_int(2) as u32;
+    let (_, file) = try_log!(args.get_file(0));
+    let new_off = try_log!(file.seek(offset, whence));
+    Ok(new_off as usize)
+}
+
+pub fn sys_truncate(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let _op = Operation::begin();
+    let mut inode = match log!(Path::new(&path).resolve()) {
+        Ok(i) => i,
+        Err(_) => err!(Errno::ENOENT),
+    };
+    let mut inner = inode.lock();
+    if inner.r#type == InodeType::Directory {
+        inode.unlock_put(inner);
+        err!(Errno::EISDIR);
+    }
+    inode.trunc(&mut inner);
+    inode.unlock_put(inner);
+    Ok(0)
+}
+
+pub fn sys_ftruncate(args: &SyscallArgs) -> Result<usize, Errno> {
+    let len = args.get_int(1) as usize;
+    let (_, file) = try_log!(args.get_file(0));
+    let file_inner = FILE_TABLE.inner[file.id].lock();
+    match &file_inner.r#type {
+        FileType::Inode { inode } | FileType::Device { inode, .. } => {
+            if !file_inner.writeable {
+                err!(Errno::EBADF);
+            }
+            let mut inode = inode.clone();
+            drop(file_inner);
+            let mut inode_inner = inode.lock();
+            if len < inode_inner.size as usize {
+                inode.trunc(&mut inode_inner);
+            }
+            inode.unlock(inode_inner);
+            Ok(0)
+        }
+        _ => err!(Errno::EBADF),
+    }
+}
+
+pub fn sys_getdents(args: &SyscallArgs) -> Result<usize, Errno> {
+    let buf_addr = args.get_addr(1);
+    let buf_len = args.get_int(2) as usize;
+    let (_, file) = try_log!(args.get_file(0));
+
+    let file_inner = FILE_TABLE.inner[file.id].lock();
+    match &file_inner.r#type {
+        FileType::Inode { inode } => {
+            let inode = inode.clone();
+            let mut offset = file_inner.offset;
+            drop(file_inner);
+
+            let mut inode_inner = inode.lock();
+            if inode_inner.r#type != InodeType::Directory {
+                inode.unlock(inode_inner);
+                err!(Errno::EBADF);
+            }
+
+            let mut total = 0usize;
+            let entsize = crate::fs::DIRSIZE + 2; // 2 for inum u16
+            let mut dirbuf = [0u8; Directory::SIZE];
+
+            while offset < inode_inner.size && total + entsize <= buf_len {
+                let read = try_log!(inode.read(
+                    &mut inode_inner,
+                    offset,
+                    &mut dirbuf,
+                    false,
+                ));
+                if read == 0 {
+                    break;
+                }
+
+                let dir = Directory::from_bytes(&dirbuf);
+                offset += Directory::SIZE as u32;
+
+                if dir.inum == 0 {
+                    continue;
+                }
+
+                let dirent = Dirent::from(&dir);
+                let src = unsafe {
+                    slice::from_raw_parts(&dirent as *const _ as *const u8, entsize)
+                };
+                if log!(proc::copy_to_user(src, buf_addr + total)).is_err() {
+                    if total == 0 {
+                        inode.unlock(inode_inner);
+                        err!(Errno::EFAULT);
+                    }
+                    break;
+                }
+                total += entsize;
+            }
+
+            // Update file offset
+            let mut f_inner = FILE_TABLE.inner[file.id].lock();
+            f_inner.offset = offset;
+            drop(f_inner);
+
+            inode.unlock(inode_inner);
+            Ok(total)
+        }
+        _ => {
+            drop(file_inner);
+            err!(Errno::EBADF);
+        }
+    }
+}
+
+pub fn sys_symlink(args: &SyscallArgs) -> Result<usize, Errno> {
+    let target = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let linkpath = try_log!(args.fetch_string(args.get_addr(1), MAXPATH));
+
+    let _op = Operation::begin();
+
+    let (parent, name) = match log!(Path::new(&linkpath).resolve_parent()) {
+        Ok(v) => v,
+        Err(_) => err!(Errno::ENOENT),
+    };
+
+    // check target does not already exist
+    if let Ok(Some(_)) = log!(Directory::lookup(
+        &parent,
+        &mut parent.lock(),
+        name,
+    )) {
+        parent.put();
+        err!(Errno::EEXIST);
+    }
+
+    let inode = match log!(Inode::alloc(parent.dev, InodeType::File)) {
+        Ok(i) => i,
+        Err(e) => {
+            parent.put();
+            err!(Errno::from(e));
+        }
+    };
+
+    let mut inode_inner = inode.lock();
+    inode_inner.nlink = 1;
+    inode.update(&inode_inner);
+
+    // write target path into inode
+    let target_bytes = target.as_bytes();
+    let written = try_log!(inode.write(&mut inode_inner, 0, target_bytes, false));
+    if written != target_bytes.len() as u32 {
+        inode_inner.nlink = 0;
+        inode.update(&inode_inner);
+        inode.unlock_put(inode_inner);
+        parent.put();
+        err!(Errno::ENOSPC);
+    }
+
+    inode.unlock(inode_inner);
+
+    if log!(Directory::link(
+        &parent,
+        &mut parent.lock(),
+        name,
+        inode.inum as u16,
+    ))
+    .is_err()
+    {
+        let mut inner = inode.lock();
+        inner.nlink = 0;
+        inode.update(&inner);
+        inode.unlock_put(inner);
+        parent.put();
+        err!(Errno::ENOSPC);
+    }
+
+    parent.put();
+    inode.put();
+
+    Ok(0)
+}
+
+pub fn sys_readlink(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let buf_addr = args.get_addr(1);
+    let buf_len = args.get_int(2) as usize;
+
+    let _op = Operation::begin();
+
+    let inode = match log!(Path::new(&path).resolve()) {
+        Ok(i) => i,
+        Err(_) => err!(Errno::ENOENT),
+    };
+
+    let mut inode_inner = inode.lock();
+    let read_len = buf_len.min(inode_inner.size as usize);
+    let mut buf = vec![0u8; read_len];
+    let read = try_log!(inode.read(&mut inode_inner, 0, &mut buf, false));
+
+    inode.unlock_put(inode_inner);
+
+    if log!(proc::copy_to_user(
+        &buf[..read as usize],
+        buf_addr,
+    ))
+    .is_err()
+    {
+        err!(Errno::EFAULT);
+    }
+
+    Ok(read as usize)
+}
+
+pub fn sys_access(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let _mode = args.get_int(1) as u32;
+
+    match log!(Path::new(&path).resolve()) {
+        Ok(inode) => {
+            inode.put();
+            Ok(0)
+        }
+        Err(_) => err!(Errno::ENOENT),
+    }
+}
+
+pub fn sys_fcntl(args: &SyscallArgs) -> Result<usize, Errno> {
+    let fd = args.get_int(0) as usize;
+    let cmd = args.get_int(1) as usize;
+    let arg = args.get_int(2) as usize;
+
+    let (_proc, data) = current_proc_and_data_mut();
+
+    match cmd {
+        F_DUPFD => {
+            if fd >= NOFILE || data.open_files[fd].is_none() {
+                err!(Errno::EBADF);
+            }
+            let mut target = arg.max(fd + 1).max(0);
+            while target < NOFILE {
+                if data.open_files[target].is_none() {
+                    let file = data.open_files[fd].as_mut().unwrap();
+                    let mut dup_file = file.clone();
+                    dup_file.dup();
+                    data.open_files[target] = Some(dup_file);
+                    return Ok(target);
+                }
+                target += 1;
+            }
+            err!(Errno::EMFILE)
+        }
+        F_GETFD => Ok(0), // no close-on-exec yet
+        F_SETFD => {
+            let _flags = arg;
+            Ok(0)
+        }
+        F_GETFL => {
+            if fd >= NOFILE || data.open_files[fd].is_none() {
+                err!(Errno::EBADF);
+            }
+            let file_inner = FILE_TABLE.inner[data.open_files[fd].as_ref().unwrap().id].lock();
+            let flags = if file_inner.readable && file_inner.writeable {
+                2
+            } else if file_inner.writeable {
+                1
+            } else {
+                0
+            };
+            Ok(flags)
+        }
+        _ => err!(Errno::EINVAL),
+    }
+}
+
+pub fn sys_dup2(args: &SyscallArgs) -> Result<usize, Errno> {
+    let oldfd = args.get_int(0) as usize;
+    let newfd = args.get_int(1) as usize;
+
+    let (_proc, data) = current_proc_and_data_mut();
+
+    if oldfd >= NOFILE || data.open_files[oldfd].is_none() {
+        err!(Errno::EBADF);
+    }
+    if newfd >= NOFILE {
+        err!(Errno::EBADF);
+    }
+
+    if oldfd == newfd {
+        return Ok(oldfd);
+    }
+
+    // close newfd if open
+    if let Some(mut file) = data.open_files[newfd].take() {
+        file.close();
+    }
+
+    let mut file = data.open_files[oldfd].as_ref().unwrap().clone();
+    file.dup();
+    data.open_files[newfd] = Some(file);
+
+    Ok(newfd)
+}
+
+pub const F_DUPFD: usize = 0;
+pub const F_GETFD: usize = 1;
+pub const F_SETFD: usize = 2;
+pub const F_GETFL: usize = 3;

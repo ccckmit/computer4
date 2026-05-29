@@ -34,13 +34,13 @@
 
 > 核心信號框架，支援 SIGKILL/SIGTERM/SIGINT 等。
 
-- [ ] `ProcInner` 新增信號欄位（`sigactions`、`pending`、`blocked`）
-- [ ] 實作 `sys_sigaction`、`sys_sigprocmask`、`sys_sigpending`、`sys_sigsuspend`
-- [ ] 實作信號遞送機制：trap 返回前檢查 `pending & ~blocked`
-- [ ] `sys_kill` 改為傳送任意信號
-- [ ] 預設動作處理（terminate / stop / ignore / core）
-- [ ] 使用者測試程式：`_signal`（含 SIGALRM + alarm）
-- [ ] `Ctrl-C` 改為透過 `SIGINT` 傳送
+- [x] `ProcInner` 新增信號欄位（`sigactions`、`pending`、`blocked`）
+- [x] 實作 `sys_sigaction`、`sys_sigprocmask`、`sys_sigpending`、`sys_sigsuspend`
+- [x] 實作信號遞送機制：trap 返回前檢查 `pending & ~blocked`
+- [x] `sys_kill` 改為傳送任意信號
+- [x] 預設動作處理（terminate / stop / ignore / core）
+- [x] 使用者測試程式：`_signal`（含 SIGALRM + alarm）
+- [x] `Ctrl-C` 改為透過 `SIGINT` 傳送
 
 **交付：** `_signal` 測試通過。
 
@@ -50,16 +50,16 @@
 
 > lseek、ftruncate、getdents、symlink、fcntl。
 
-- [ ] `sys_lseek`：SEEK_SET / SEEK_CUR / SEEK_END
-- [ ] `sys_ftruncate` / `sys_truncate`
-- [ ] `sys_getdents`：目錄內容列舉
-- [ ] `sys_symlink` / `sys_readlink`
-- [ ] `sys_dup2`、`sys_fcntl`（F_DUPFD、F_GETFD、F_SETFD、F_GETFL）
-- [ ] `sys_access`（F_OK / R_OK / W_OK / X_OK）
-- [ ] Inode 新增 `mode` 欄位（`st_mode` 位元遮罩）
-- [ ] stat 結構擴充為完整 POSIX `struct stat`
+- [x] `sys_lseek`：SEEK_SET / SEEK_CUR / SEEK_END
+- [x] `sys_ftruncate` / `sys_truncate`
+- [x] `sys_getdents`：目錄內容列舉
+- [x] `sys_symlink` / `sys_readlink`
+- [x] `sys_dup2`、`sys_fcntl`（F_DUPFD、F_GETFD、F_SETFD、F_GETFL）
+- [x] `sys_access`（F_OK / R_OK / W_OK / X_OK）
+- [x] Stat 結構擴充為 POSIX `struct stat`（mode、uid、gid、blksize、blocks、atim、mtim、ctim）
+- [x] errno 擴充（ESPIPE、EOVERFLOW、ENXIO、EACCES 等）
 
-**交付：** `_posix_file` 測試通過，支援 `ls -l`。
+**交付：** `_posix_file` 測試通過。
 
 ---
 

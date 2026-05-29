@@ -39,6 +39,14 @@ pub struct FileInner {
     pub offset: u32,
 }
 
+/// whence values for lseek
+pub struct Whence;
+impl Whence {
+    pub const SEEK_SET: u32 = 0;
+    pub const SEEK_CUR: u32 = 1;
+    pub const SEEK_END: u32 = 2;
+}
+
 pub static FILE_TABLE: FileTable = FileTable::new();
 
 /// Global file table
@@ -293,9 +301,37 @@ impl File {
             _ => err!(Errno::EBADF),
         }
     }
-}
 
-/// File open flags
+    pub fn seek(&self, offset: i64, whence: u32) -> Result<u32, Errno> {
+        let mut file_inner = FILE_TABLE.inner[self.id].lock();
+
+        match &file_inner.r#type {
+            FileType::Inode { inode } | FileType::Device { inode, .. } => {
+                let inode = inode.clone();
+                let inode_inner = inode.lock();
+                let size = inode_inner.size as i64;
+                inode.unlock(inode_inner);
+
+                let new_offset = match whence {
+                    Whence::SEEK_SET => offset,
+                    Whence::SEEK_CUR => file_inner.offset as i64 + offset,
+                    Whence::SEEK_END => size + offset,
+                    _ => err!(Errno::EINVAL),
+                };
+
+                if new_offset < 0 {
+                    err!(Errno::EINVAL);
+                }
+
+                file_inner.offset = new_offset as u32;
+                Ok(new_offset as u32)
+            }
+            FileType::Pipe { .. } => err!(Errno::ESPIPE),
+            FileType::Socket { .. } => err!(Errno::ESPIPE),
+            FileType::None => err!(Errno::EBADF),
+        }
+    }
+}
 pub struct OpenFlag;
 
 impl OpenFlag {

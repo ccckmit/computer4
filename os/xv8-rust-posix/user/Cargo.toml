@@ -204,5 +204,12 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "_posix_file"
+path = "testbin/posix_file.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }

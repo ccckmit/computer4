@@ -226,6 +226,42 @@ pub mod raw {
     pub fn sigsuspend(mask: usize) -> isize {
         syscall1(Syscall::Sigsuspend, mask)
     }
+
+    pub fn lseek(fd: usize, offset: isize, whence: usize) -> isize {
+        syscall3(Syscall::Lseek, fd, offset as usize, whence)
+    }
+
+    pub fn truncate(path: *const u8) -> isize {
+        syscall1(Syscall::Truncate, path as usize)
+    }
+
+    pub fn ftruncate(fd: usize, len: usize) -> isize {
+        syscall2(Syscall::Ftruncate, fd, len)
+    }
+
+    pub fn getdents(fd: usize, buf: *mut u8, len: usize) -> isize {
+        syscall3(Syscall::Getdents, fd, buf as usize, len)
+    }
+
+    pub fn symlink(target: *const u8, linkpath: *const u8) -> isize {
+        syscall2(Syscall::Symlink, target as usize, linkpath as usize)
+    }
+
+    pub fn readlink(path: *const u8, buf: *mut u8, len: usize) -> isize {
+        syscall3(Syscall::Readlink, path as usize, buf as usize, len)
+    }
+
+    pub fn access(path: *const u8, mode: usize) -> isize {
+        syscall2(Syscall::Access, path as usize, mode)
+    }
+
+    pub fn fcntl(fd: usize, cmd: usize, arg: usize) -> isize {
+        syscall3(Syscall::Fcntl, fd, cmd, arg)
+    }
+
+    pub fn dup2(oldfd: usize, newfd: usize) -> isize {
+        syscall2(Syscall::Dup2, oldfd, newfd)
+    }
 }
 
 use kernel::abi::{MAXPATH, Stat, Errno, SigAction};
@@ -242,6 +278,11 @@ impl Fd {
     /// Returns the raw file descriptor number.
     pub fn as_raw(&self) -> usize {
         self.0
+    }
+
+    /// Creates an `Fd` from a raw file descriptor number.
+    pub fn from_raw(fd: usize) -> Self {
+        Self(fd)
     }
 }
 
@@ -491,4 +532,45 @@ pub fn sigpending() -> Result<u32, Errno> {
 
 pub fn sigsuspend(_mask: u32) -> Result<(), Errno> {
     Err(Errno::EINTR)
+}
+
+pub fn lseek(fd: Fd, offset: isize, whence: usize) -> Result<usize, Errno> {
+    check(raw::lseek(fd.as_raw(), offset, whence))
+}
+
+pub fn truncate(path: &str) -> Result<(), Errno> {
+    let cpath = validate_path(path)?;
+    check_unit(raw::truncate(cpath.as_ptr()))
+}
+
+pub fn ftruncate(fd: Fd, len: usize) -> Result<(), Errno> {
+    check_unit(raw::ftruncate(fd.as_raw(), len))
+}
+
+pub fn getdents(fd: Fd, buf: &mut [u8]) -> Result<usize, Errno> {
+    check(raw::getdents(fd.as_raw(), buf.as_mut_ptr(), buf.len()))
+}
+
+pub fn symlink(target: &str, linkpath: &str) -> Result<(), Errno> {
+    let ctarget = validate_path(target)?;
+    let clinkpath = validate_path(linkpath)?;
+    check_unit(raw::symlink(ctarget.as_ptr(), clinkpath.as_ptr()))
+}
+
+pub fn readlink(path: &str, buf: &mut [u8]) -> Result<usize, Errno> {
+    let cpath = validate_path(path)?;
+    check(raw::readlink(cpath.as_ptr(), buf.as_mut_ptr(), buf.len()))
+}
+
+pub fn access(path: &str, mode: usize) -> Result<(), Errno> {
+    let cpath = validate_path(path)?;
+    check_unit(raw::access(cpath.as_ptr(), mode))
+}
+
+pub fn fcntl(fd: Fd, cmd: usize, arg: usize) -> Result<usize, Errno> {
+    check(raw::fcntl(fd.as_raw(), cmd, arg))
+}
+
+pub fn dup2(oldfd: Fd, newfd: usize) -> Result<usize, Errno> {
+    check(raw::dup2(oldfd.as_raw(), newfd))
 }

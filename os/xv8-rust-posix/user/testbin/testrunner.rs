@@ -5,6 +5,7 @@ use user::*;
 
 const TESTS: &[&str] = &[
     "/_fs", "/_pipe", "/_proc", "/_fd", "/_sbrk", "/_cow", "/_net", "/_posix_base", "/_signal",
+    "/_posix_file",
 ];
 
 #[unsafe(no_mangle)]

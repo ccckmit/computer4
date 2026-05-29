@@ -1,10 +1,13 @@
 // Exports common ABI types and constants for use by userspace programs.
-pub use crate::file::{CONSOLE, Ioctl, OpenFlag};
-pub use crate::fs::{DIRSIZE, Directory, InodeType, Stat};
+pub use crate::file::{CONSOLE, Ioctl, OpenFlag, Whence};
+pub use crate::fs::{DIRSIZE, Dirent, Directory, InodeType, Stat, mode};
 pub use crate::net::Ipv4Addr;
 pub use crate::param::MAXPATH;
 pub use crate::signal::SigAction;
-pub use crate::syscall::{Errno, Syscall};
+pub use crate::syscall::Errno;
+pub use crate::sysfile::{F_DUPFD, F_GETFD, F_SETFD, F_GETFL};
+
+pub use crate::syscall::Syscall;
 
 pub const SIG_DFL: usize = 0;
 pub const SIG_IGN: usize = 1;

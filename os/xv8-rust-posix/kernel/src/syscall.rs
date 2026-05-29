@@ -24,25 +24,36 @@ pub enum Errno {
     ESRCH = 3,
     EINTR = 4,
     EIO = 5,
+    ENXIO = 6,
+    E2BIG = 7,
     ENOEXEC = 8,
     EBADF = 9,
     ECHILD = 10,
     EAGAIN = 11,
     ENOMEM = 12,
+    EACCES = 13,
     EFAULT = 14,
+    EBUSY = 16,
     EEXIST = 17,
     EXDEV = 18,
+    ENODEV = 19,
     ENOTDIR = 20,
     EISDIR = 21,
     EINVAL = 22,
     ENFILE = 23,
     EMFILE = 24,
+    ENOTTY = 25,
+    EFBIG = 27,
     ENOSPC = 28,
+    ESPIPE = 29,
+    EROFS = 30,
     EMLINK = 31,
     EPIPE = 32,
+    ELOOP = 40,
     ENAMETOOLONG = 36,
     ENOSYS = 38,
     ENOTEMPTY = 39,
+    EOVERFLOW = 75,
     EMSGSIZE = 90,
 }
 
@@ -60,25 +71,36 @@ impl From<u16> for Errno {
             3 => Self::ESRCH,
             4 => Self::EINTR,
             5 => Self::EIO,
+            6 => Self::ENXIO,
+            7 => Self::E2BIG,
             8 => Self::ENOEXEC,
             9 => Self::EBADF,
             10 => Self::ECHILD,
             11 => Self::EAGAIN,
             12 => Self::ENOMEM,
+            13 => Self::EACCES,
             14 => Self::EFAULT,
+            16 => Self::EBUSY,
             17 => Self::EEXIST,
             18 => Self::EXDEV,
+            19 => Self::ENODEV,
             20 => Self::ENOTDIR,
             21 => Self::EISDIR,
             22 => Self::EINVAL,
             23 => Self::ENFILE,
             24 => Self::EMFILE,
+            25 => Self::ENOTTY,
+            27 => Self::EFBIG,
             28 => Self::ENOSPC,
+            29 => Self::ESPIPE,
+            30 => Self::EROFS,
             31 => Self::EMLINK,
             32 => Self::EPIPE,
             36 => Self::ENAMETOOLONG,
             38 => Self::ENOSYS,
             39 => Self::ENOTEMPTY,
+            40 => Self::ELOOP,
+            75 => Self::EOVERFLOW,
             90 => Self::EMSGSIZE,
             _ => Self::EINVAL,
         }
@@ -93,25 +115,36 @@ impl Display for Errno {
             Errno::ESRCH => write!(f, "no such process"),
             Errno::EINTR => write!(f, "interrupted"),
             Errno::EIO => write!(f, "input/output error"),
+            Errno::ENXIO => write!(f, "no such device or address"),
+            Errno::E2BIG => write!(f, "argument list too long"),
             Errno::ENOEXEC => write!(f, "exec format error"),
             Errno::EBADF => write!(f, "bad file descriptor"),
             Errno::ECHILD => write!(f, "no child processes"),
             Errno::EAGAIN => write!(f, "resource temporarily unavailable"),
             Errno::ENOMEM => write!(f, "cannot allocate memory"),
+            Errno::EACCES => write!(f, "permission denied"),
             Errno::EFAULT => write!(f, "bad address"),
+            Errno::EBUSY => write!(f, "device or resource busy"),
             Errno::EEXIST => write!(f, "file exists"),
             Errno::EXDEV => write!(f, "cross-device link"),
+            Errno::ENODEV => write!(f, "no such device"),
             Errno::ENOTDIR => write!(f, "not a directory"),
             Errno::EISDIR => write!(f, "is a directory"),
             Errno::EINVAL => write!(f, "invalid argument"),
             Errno::ENFILE => write!(f, "too many open files in system"),
             Errno::EMFILE => write!(f, "too many open files"),
+            Errno::ENOTTY => write!(f, "not a typewriter"),
+            Errno::EFBIG => write!(f, "file too large"),
             Errno::ENOSPC => write!(f, "no space left on device"),
+            Errno::ESPIPE => write!(f, "illegal seek"),
+            Errno::EROFS => write!(f, "read-only file system"),
             Errno::EMLINK => write!(f, "too many links"),
             Errno::EPIPE => write!(f, "broken pipe"),
+            Errno::ELOOP => write!(f, "too many levels of symbolic links"),
             Errno::ENAMETOOLONG => write!(f, "file name too long"),
             Errno::ENOSYS => write!(f, "function not implemented"),
             Errno::ENOTEMPTY => write!(f, "directory not empty"),
+            Errno::EOVERFLOW => write!(f, "value too large for defined data type"),
             Errno::EMSGSIZE => write!(f, "message too large"),
         }
     }
@@ -272,10 +305,19 @@ pub enum Syscall {
     Send = 25,
     Receive = 26,
     Random = 27,
+    Lseek = 28,
+    Truncate = 29,
+    Ftruncate = 30,
+    Getdents = 31,
+    Symlink = 32,
+    Readlink = 33,
+    Access = 34,
     Sigaction = 37,
     Sigprocmask = 38,
     Sigpending = 39,
     Sigsuspend = 40,
+    Fcntl = 60,
+    Dup2 = 61,
 }
 
 impl TryFrom<usize> for Syscall {
@@ -310,10 +352,19 @@ impl TryFrom<usize> for Syscall {
             25 => Ok(Syscall::Send),
             26 => Ok(Syscall::Receive),
             27 => Ok(Syscall::Random),
+            28 => Ok(Syscall::Lseek),
+            29 => Ok(Syscall::Truncate),
+            30 => Ok(Syscall::Ftruncate),
+            31 => Ok(Syscall::Getdents),
+            32 => Ok(Syscall::Symlink),
+            33 => Ok(Syscall::Readlink),
+            34 => Ok(Syscall::Access),
             37 => Ok(Syscall::Sigaction),
             38 => Ok(Syscall::Sigprocmask),
             39 => Ok(Syscall::Sigpending),
             40 => Ok(Syscall::Sigsuspend),
+            60 => Ok(Syscall::Fcntl),
+            61 => Ok(Syscall::Dup2),
             _ => Err(Errno::ENOSYS),
         }
     }
@@ -358,10 +409,19 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
     table[25] = Some(sys_send);
     table[26] = Some(sys_receive);
     table[27] = Some(sys_random);
+    table[28] = Some(sys_lseek);
+    table[29] = Some(sys_truncate);
+    table[30] = Some(sys_ftruncate);
+    table[31] = Some(sys_getdents);
+    table[32] = Some(sys_symlink);
+    table[33] = Some(sys_readlink);
+    table[34] = Some(sys_access);
     table[37] = Some(sys_sigaction);
     table[38] = Some(sys_sigprocmask);
     table[39] = Some(sys_sigpending);
     table[40] = Some(sys_sigsuspend);
+    table[60] = Some(sys_fcntl);
+    table[61] = Some(sys_dup2);
     table
 };
 
