@@ -100,8 +100,8 @@ pub mod raw {
         syscall3(Syscall::Write, fd, buf as usize, len)
     }
 
-    pub fn kill(pid: usize) -> isize {
-        syscall1(Syscall::Kill, pid)
+    pub fn kill(pid: usize, sig: usize) -> isize {
+        syscall2(Syscall::Kill, pid, sig)
     }
 
     pub fn exec(path: *const u8, argv: *const *const u8) -> isize {
@@ -210,9 +210,25 @@ pub mod raw {
     pub fn random(buf: *mut u8, len: usize) -> isize {
         syscall2(Syscall::Random, buf as usize, len)
     }
+
+    pub fn sigaction(sig: usize, act: *const u8, oldact: *mut u8) -> isize {
+        syscall3(Syscall::Sigaction, sig, act as usize, oldact as usize)
+    }
+
+    pub fn sigprocmask(how: usize, set: *const u8, oldset: *mut u8) -> isize {
+        syscall3(Syscall::Sigprocmask, how, set as usize, oldset as usize)
+    }
+
+    pub fn sigpending(set: *mut u8) -> isize {
+        syscall1(Syscall::Sigpending, set as usize)
+    }
+
+    pub fn sigsuspend(mask: usize) -> isize {
+        syscall1(Syscall::Sigsuspend, mask)
+    }
 }
 
-use kernel::abi::{MAXPATH, Stat, Errno};
+use kernel::abi::{MAXPATH, Stat, Errno, SigAction};
 
 /// A file descriptor returned by or passed to syscalls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -310,8 +326,8 @@ pub fn write(fd: Fd, buf: &[u8]) -> Result<usize, Errno> {
     check(raw::write(fd.as_raw(), buf.as_ptr(), buf.len()))
 }
 
-pub fn kill(pid: usize) -> Result<(), Errno> {
-    check_unit(raw::kill(pid))
+pub fn kill(pid: usize, sig: usize) -> Result<(), Errno> {
+    check_unit(raw::kill(pid, sig))
 }
 
 /// Replaces the current process image with the program at `path`.
@@ -445,4 +461,34 @@ pub fn receive(
 
 pub fn random(buf: &mut [u8]) -> Result<(), Errno> {
     check_unit(raw::random(buf.as_mut_ptr(), buf.len()))
+}
+
+pub fn sigaction(sig: usize, act: Option<&SigAction>, oldact: Option<&mut SigAction>) -> Result<(), Errno> {
+    let act_ptr = act.map_or(core::ptr::null::<SigAction>(), |a| a as *const SigAction);
+    let oldact_ptr = oldact.map_or(core::ptr::null_mut::<SigAction>(), |a| a as *mut SigAction);
+    check_unit(raw::sigaction(
+        sig,
+        act_ptr as *const u8,
+        oldact_ptr as *mut u8,
+    ))
+}
+
+pub fn sigprocmask(how: usize, set: Option<&u32>, oldset: Option<&mut u32>) -> Result<(), Errno> {
+    let set_ptr = set.map_or(core::ptr::null::<u32>(), |s| s as *const u32);
+    let oldset_ptr = oldset.map_or(core::ptr::null_mut::<u32>(), |s| s as *mut u32);
+    check_unit(raw::sigprocmask(
+        how,
+        set_ptr as *const u8,
+        oldset_ptr as *mut u8,
+    ))
+}
+
+pub fn sigpending() -> Result<u32, Errno> {
+    let mut set: u32 = 0;
+    check_unit(raw::sigpending((&mut set) as *mut u32 as *mut u8))?;
+    Ok(set)
+}
+
+pub fn sigsuspend(_mask: u32) -> Result<(), Errno> {
+    Err(Errno::EINTR)
 }

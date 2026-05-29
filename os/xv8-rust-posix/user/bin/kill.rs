@@ -9,11 +9,11 @@ fn main(args: Args) {
         exit_with_msg("usage: kill pid...");
     }
 
-    for pid in args.args_as_str() {
-        let pid = pid.parse::<usize>().unwrap_or_else(|_| {
+    for pid_str in args.args_as_str() {
+        let pid = pid_str.parse::<usize>().unwrap_or_else(|_| {
             exit_with_msg("kill: invalid pid");
         });
-        if kill(pid).is_err() {
+        if kill(pid, 15).is_err() { // SIGTERM
             eprintln!("kill: failed to kill {}", pid);
         }
     }

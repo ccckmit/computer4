@@ -272,6 +272,10 @@ pub enum Syscall {
     Send = 25,
     Receive = 26,
     Random = 27,
+    Sigaction = 37,
+    Sigprocmask = 38,
+    Sigpending = 39,
+    Sigsuspend = 40,
 }
 
 impl TryFrom<usize> for Syscall {
@@ -306,6 +310,10 @@ impl TryFrom<usize> for Syscall {
             25 => Ok(Syscall::Send),
             26 => Ok(Syscall::Receive),
             27 => Ok(Syscall::Random),
+            37 => Ok(Syscall::Sigaction),
+            38 => Ok(Syscall::Sigprocmask),
+            39 => Ok(Syscall::Sigpending),
+            40 => Ok(Syscall::Sigsuspend),
             _ => Err(Errno::ENOSYS),
         }
     }
@@ -350,6 +358,10 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
     table[25] = Some(sys_send);
     table[26] = Some(sys_receive);
     table[27] = Some(sys_random);
+    table[37] = Some(sys_sigaction);
+    table[38] = Some(sys_sigprocmask);
+    table[39] = Some(sys_sigpending);
+    table[40] = Some(sys_sigsuspend);
     table
 };
 

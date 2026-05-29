@@ -78,7 +78,7 @@ fn test_kill() {
     read(read_fd, &mut buf).expect("parent read ready signal");
     close(read_fd).expect("parent close read");
 
-    kill(pid).expect("kill");
+    kill(pid, 9).expect("kill"); // SIGKILL
 
     // wait must return and reap the killed child.
     let mut code = 0;
@@ -91,7 +91,7 @@ fn test_kill() {
 /// kill on a pid that does not exist must return an error.
 fn test_kill_invalid_pid() {
     assert_eq!(
-        kill(0),
+        kill(0, 9), // SIGKILL to pid 0
         Err(Errno::ESRCH),
         "kill with invalid pid must fail"
     );

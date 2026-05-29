@@ -3,4 +3,12 @@ pub use crate::file::{CONSOLE, Ioctl, OpenFlag};
 pub use crate::fs::{DIRSIZE, Directory, InodeType, Stat};
 pub use crate::net::Ipv4Addr;
 pub use crate::param::MAXPATH;
+pub use crate::signal::SigAction;
 pub use crate::syscall::{Errno, Syscall};
+
+pub const SIG_DFL: usize = 0;
+pub const SIG_IGN: usize = 1;
+pub const SIG_BLOCK: u32 = 0;
+pub const SIG_UNBLOCK: u32 = 1;
+pub const SIG_SETMASK: u32 = 2;
+pub const NSIG: usize = 32;

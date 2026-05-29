@@ -26,7 +26,7 @@ pub(crate) mod plic;
 pub(crate) mod proc;
 pub(crate) mod riscv;
 pub(crate) mod rng;
-pub(crate) mod signal;
+pub mod signal;
 pub(crate) mod sleeplock;
 pub(crate) mod spinlock;
 pub(crate) mod start;

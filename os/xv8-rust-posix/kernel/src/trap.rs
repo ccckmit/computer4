@@ -8,6 +8,7 @@ use crate::riscv::{
     PGSIZE, interrupts,
     registers::{satp, scause, sepc, sstatus, stimecmp, stval, stvec, time, tp},
 };
+use crate::signal::{SigDefault, SIG_DFL, SIG_IGN, default_action, sigbit};
 use crate::spinlock::SpinLock;
 use crate::syscall::syscall;
 use crate::trampoline::{trampoline, userret, uservec};
@@ -107,6 +108,8 @@ pub unsafe fn usertrap() {
             }
         }
 
+        deliver_signals(proc, data);
+
         if proc.inner.lock().killed {
             proc::exit(-1);
         }
@@ -116,6 +119,64 @@ pub unsafe fn usertrap() {
         }
 
         usertrapret();
+    }
+}
+
+/// Delivers pending signals to the current process.
+///
+/// Called from `usertrap` before returning to user space.
+unsafe fn deliver_signals(proc: &'static crate::proc::Proc, data: &mut crate::proc::ProcData) {
+    loop {
+        let pending;
+        let blocked;
+        {
+            let inner = proc.inner.lock();
+            pending = inner.pending;
+            blocked = inner.blocked;
+        }
+
+        let unmasked = pending & !blocked;
+        if unmasked == 0 {
+            break;
+        }
+
+        // Find the lowest pending signal
+        let sig = unmasked.trailing_zeros() + 1;
+        let bit = sigbit(sig);
+
+        let handler = data.sig_handlers[sig as usize];
+
+        // Clear pending bit
+        proc.inner.lock().pending &= !bit;
+
+        match handler {
+            SIG_DFL => {
+                match default_action(sig) {
+                    SigDefault::Terminate => {
+                        proc.inner.lock().killed = true;
+                        proc::exit(-1);
+                    }
+                    SigDefault::Ignore => {
+                        // already cleared pending, continue loop
+                    }
+                    SigDefault::Stop => {
+                        proc.inner.lock().state = crate::proc::ProcState::Sleeping;
+                        proc.inner.lock().channel = Some(Channel::Proc(proc.id));
+                        break;
+                    }
+                }
+            }
+            SIG_IGN => {
+                // already cleared pending, continue loop
+            }
+            _ => {
+                // Custom handler: set up execution at handler address
+                let trapframe = data.trapframe_mut();
+                trapframe.epc = handler;
+                trapframe.a0 = sig as usize;
+                break;
+            }
+        }
     }
 }
 

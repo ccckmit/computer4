@@ -1178,9 +1178,6 @@ pub fn kill(pid: Pid, sig: u32) -> bool {
     for proc in PROC_TABLE.iter() {
         let mut inner = proc.inner.lock();
         if inner.state != ProcState::Unused && inner.pid == pid {
-            if sig == 9 || signal::default_action(sig) == signal::SigDefault::Terminate {
-                inner.killed = true;
-            }
             if sig > 0 && sig < NSIG as u32 {
                 inner.pending |= signal::sigbit(sig);
             }
