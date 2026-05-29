@@ -28,7 +28,6 @@ fn count(reader: &mut impl BufRead) -> Counts {
 }
 
 fn print_counts(c: &Counts, filename: &str, show_lines: bool, show_words: bool, show_chars: bool, show_bytes: bool) {
-    let fields: Vec<String> = Vec::new();
     if show_lines { print!("{:>8} ", c.lines); }
     if show_words { print!("{:>8} ", c.words); }
     if show_chars { print!("{:>8} ", c.chars); }

@@ -1,7 +1,7 @@
 use crate::file::Ioctl;
 use crate::proc::{self, Channel, PROC_TABLE, Pid};
 use crate::spinlock::SpinLock;
-use crate::syscall::SysError;
+use crate::syscall::Errno;
 use crate::uart;
 use crate::vm::VA;
 
@@ -72,7 +72,7 @@ impl Console {
     }
 
     /// User `write()`s to the console are handled here.
-    pub fn write(mut src: VA, len: usize) -> Result<usize, SysError> {
+    pub fn write(mut src: VA, len: usize) -> Result<usize, Errno> {
         let mut n = 0;
 
         let mut buf = [0u8; 32];
@@ -105,7 +105,7 @@ impl Console {
 
     /// User `read()`s from the console are handled here.
     /// Currently only handles user addresses.
-    pub fn read(mut dst: VA, mut len: usize) -> Result<usize, SysError> {
+    pub fn read(mut dst: VA, mut len: usize) -> Result<usize, Errno> {
         let mut console = CONSOLE.lock();
 
         let target = len;
@@ -114,7 +114,7 @@ impl Console {
             // wait until interrupt handler has put some input into `buf`.
             while console.r == console.w {
                 if proc::current_proc().is_killed() {
-                    err!(SysError::Interrupted);
+                    err!(Errno::EINTR);
                 }
 
                 console = proc::sleep(Channel::Buffer(&console.r as *const _ as usize), console);
@@ -235,7 +235,7 @@ impl Console {
         }
     }
 
-    pub fn ioctl(cmd: usize, arg: usize) -> Result<usize, SysError> {
+    pub fn ioctl(cmd: usize, arg: usize) -> Result<usize, Errno> {
         let mut console = CONSOLE.lock();
         match cmd {
             Ioctl::CONSOLE_SET_RAW => {
@@ -258,7 +258,7 @@ impl Console {
 
                 Ok(0)
             }
-            _ => Err(SysError::InvalidArgument),
+            _ => Err(Errno::EINVAL),
         }
     }
 }

@@ -65,7 +65,6 @@ fn main() {
         std::process::exit(1);
     }
 
-    let exit_code = 0;
     for pid_str in &args[i..] {
         let pid: i32 = match pid_str.parse() {
             Ok(p) => p,

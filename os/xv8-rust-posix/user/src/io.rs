@@ -1,18 +1,18 @@
-use kernel::abi::SysError;
+use kernel::abi::Errno;
 
 use crate::syscall::{self, Fd};
 
 /// Implemented by readable byte sources, analogous to `std::io::Read`.
 pub trait Read {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, SysError>;
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno>;
 
     /// Reads until `buf` is fully filled, retrying on short reads.
-    /// Returns `SysError::IoError` if EOF is reached before `buf` is exhausted.
-    fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<(), SysError> {
+    /// Returns `Errno::EIO` if EOF is reached before `buf` is exhausted.
+    fn read_exact(&mut self, mut buf: &mut [u8]) -> Result<(), Errno> {
         while !buf.is_empty() {
             let n = self.read(buf)?;
             if n == 0 {
-                return Err(SysError::IoError);
+                return Err(Errno::EIO);
             }
             buf = &mut buf[n..];
         }
@@ -22,10 +22,10 @@ pub trait Read {
 
 /// Implemented by writable byte sinks, analogous to `std::io::Write`.
 pub trait Write {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, SysError>;
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Errno>;
 
     /// Writes all of `buf`, retrying after partial writes.
-    fn write_all(&mut self, mut buf: &[u8]) -> Result<(), SysError> {
+    fn write_all(&mut self, mut buf: &[u8]) -> Result<(), Errno> {
         while !buf.is_empty() {
             let n = self.write(buf)?;
             buf = &buf[n..];
@@ -37,13 +37,13 @@ pub trait Write {
 /// Any `Fd` implements both `Read` and `Write` so it can be passed wherever a
 /// generic reader or writer is expected (e.g. `fn cat(src: &mut impl Read)`).
 impl Read for Fd {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, SysError> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
         syscall::read(*self, buf)
     }
 }
 
 impl Write for Fd {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, SysError> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
         syscall::write(*self, buf)
     }
 }
@@ -51,7 +51,7 @@ impl Write for Fd {
 pub struct Stdin;
 
 impl Read for Stdin {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, SysError> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, Errno> {
         syscall::read(Fd::STDIN, buf)
     }
 }
@@ -59,7 +59,7 @@ impl Read for Stdin {
 pub struct Stdout;
 
 impl Write for Stdout {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, SysError> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
         syscall::write(Fd::STDOUT, buf)
     }
 }
@@ -75,7 +75,7 @@ impl core::fmt::Write for Stdout {
 pub struct Stderr;
 
 impl Write for Stderr {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, SysError> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Errno> {
         syscall::write(Fd::STDERR, buf)
     }
 }

@@ -24,7 +24,7 @@ fn test_getpid() {
 fn test_wait_no_children() {
     assert_eq!(
         wait(&mut 0),
-        Err(SysError::NoChildren),
+        Err(Errno::ECHILD),
         "wait with no children must fail"
     );
 }
@@ -92,7 +92,7 @@ fn test_kill() {
 fn test_kill_invalid_pid() {
     assert_eq!(
         kill(0),
-        Err(SysError::NoProcess),
+        Err(Errno::ESRCH),
         "kill with invalid pid must fail"
     );
 }
@@ -122,7 +122,7 @@ fn test_wait_only_own_children() {
     // A second wait must fail because the parent has no more direct children.
     assert_eq!(
         wait(&mut 0),
-        Err(SysError::NoChildren),
+        Err(Errno::ECHILD),
         "wait with no children must fail"
     );
 }

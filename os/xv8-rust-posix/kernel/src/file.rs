@@ -11,7 +11,7 @@ use crate::pipe::Pipe;
 use crate::proc;
 use crate::sleeplock::SleepLock;
 use crate::spinlock::SpinLock;
-use crate::syscall::SysError;
+use crate::syscall::Errno;
 use crate::vm::VA;
 
 #[derive(Debug, Clone)]
@@ -141,7 +141,7 @@ impl File {
     }
 
     /// Gets metadata about file.
-    pub fn stat(&self, addr: VA) -> Result<(), SysError> {
+    pub fn stat(&self, addr: VA) -> Result<(), Errno> {
         let file_inner = FILE_TABLE.inner[self.id].lock();
 
         match &file_inner.r#type {
@@ -154,21 +154,21 @@ impl File {
                     slice::from_raw_parts(&stat as *const _ as *const u8, size_of::<Stat>())
                 };
                 if log!(proc::copy_to_user(src, addr)).is_err() {
-                    err!(SysError::BadAddress);
+                    err!(Errno::EFAULT);
                 }
 
                 Ok(())
             }
-            _ => Err(SysError::BadDescriptor),
+            _ => Err(Errno::EBADF),
         }
     }
 
     /// Reads from file.
-    pub fn read(&self, addr: VA, n: usize) -> Result<usize, SysError> {
+    pub fn read(&self, addr: VA, n: usize) -> Result<usize, Errno> {
         let mut file_inner = FILE_TABLE.inner[self.id].lock();
 
         if !file_inner.readable {
-            err!(SysError::BadDescriptor);
+            err!(Errno::EBADF);
         }
 
         match &mut file_inner.r#type {
@@ -192,28 +192,28 @@ impl File {
                 if let Ok(read) = read {
                     Ok(read as usize)
                 } else {
-                    err!(SysError::IoError);
+                    err!(Errno::EIO);
                 }
             }
 
             FileType::Device { inode: _, major } => match &DEVICES[*major as usize] {
                 Some(dev) => (dev.read)(addr, n),
-                None => err!(SysError::NoEntry),
+                None => err!(Errno::ENOENT),
             },
 
             FileType::Socket { socket_id: _ } => {
                 // reads from socket should go through recv()
-                err!(SysError::BadDescriptor);
+                err!(Errno::EBADF);
             }
         }
     }
 
     /// Writes to a file.
-    pub fn write(&mut self, addr: VA, n: usize) -> Result<usize, SysError> {
+    pub fn write(&mut self, addr: VA, n: usize) -> Result<usize, Errno> {
         let mut file_inner = FILE_TABLE.inner[self.id].lock();
 
         if !file_inner.writeable {
-            err!(SysError::BadDescriptor);
+            err!(Errno::EBADF);
         }
 
         match &mut file_inner.r#type {
@@ -257,40 +257,40 @@ impl File {
                 if i == n {
                     Ok(n)
                 } else {
-                    err!(SysError::IoError);
+                    err!(Errno::EIO);
                 }
             }
 
             FileType::Device { inode: _, major } => match &DEVICES[*major as usize] {
                 Some(dev) => (dev.write)(addr, n),
-                None => err!(SysError::NoEntry),
+                None => err!(Errno::ENOENT),
             },
 
             FileType::Socket { socket_id: _ } => {
                 // writes to socket should go through send()
-                err!(SysError::InvalidArgument);
+                err!(Errno::EINVAL);
             }
         }
     }
 
-    pub fn ioctl(&self, cmd: usize, arg: usize) -> Result<usize, SysError> {
+    pub fn ioctl(&self, cmd: usize, arg: usize) -> Result<usize, Errno> {
         let file_inner = FILE_TABLE.inner[self.id].lock();
 
         match &file_inner.r#type {
             FileType::Device { major, .. } if *major as usize == CONSOLE => {
                 Console::ioctl(cmd, arg)
             }
-            FileType::Device { .. } => err!(SysError::NotImplemented),
+            FileType::Device { .. } => err!(Errno::ENOSYS),
 
             FileType::Socket { socket_id } => {
                 if cmd == Ioctl::SOCKET_GET_PORT {
                     Ok(SocketTable::get_port_number(*socket_id) as usize)
                 } else {
-                    err!(SysError::NotImplemented)
+                    err!(Errno::ENOSYS)
                 }
             }
 
-            _ => err!(SysError::BadDescriptor),
+            _ => err!(Errno::EBADF),
         }
     }
 }
@@ -309,8 +309,8 @@ impl OpenFlag {
 /// Device interface
 #[derive(Debug, Clone, Copy)]
 pub struct Device {
-    pub read: fn(addr: VA, n: usize) -> Result<usize, SysError>,
-    pub write: fn(addr: VA, n: usize) -> Result<usize, SysError>,
+    pub read: fn(addr: VA, n: usize) -> Result<usize, Errno>,
+    pub write: fn(addr: VA, n: usize) -> Result<usize, Errno>,
 }
 
 /// Device-specific ioctl commands

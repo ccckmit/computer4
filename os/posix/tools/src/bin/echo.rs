@@ -8,10 +8,6 @@ fn main() {
         i += 1;
     }
 
-    if let Some(line) = args[i..].join(" ").strip_suffix('\n') {
-        // join already handles the spacing
-    }
-
     let output = args[i..].join(" ");
     if no_newline {
         print!("{}", output);

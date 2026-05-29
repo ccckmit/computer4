@@ -12,145 +12,145 @@ use crate::sysnet::*;
 use crate::sysproc::*;
 use crate::vm::VA;
 
-/// Syscall error codes using POSIX-standard numeric values.
+/// Syscall error codes using POSIX.1-2008 errno values.
 ///
-/// Kernel encodes `-(error_code as isize)` in the return register (`a0`).
-/// User space decodes negative values back into `SysError` variants.
+/// Kernel encodes `-(errno as isize)` in the return register (`a0`).
+/// User space decodes negative values back into `Errno` variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-pub enum SysError {
-    NotPermitted = 1,
-    NoEntry = 2,
-    NoProcess = 3,
-    Interrupted = 4,
-    IoError = 5,
-    InvalidExecutable = 8,
-    BadDescriptor = 9,
-    NoChildren = 10,
-    ResourceUnavailable = 11,
-    OutOfMemory = 12,
-    BadAddress = 14,
-    AlreadyExists = 17,
-    CrossDeviceLink = 18,
-    NotDirectory = 20,
-    IsDirectory = 21,
-    InvalidArgument = 22,
-    FileTableFull = 23,
-    TooManyFiles = 24,
-    NoSpace = 28,
-    TooManyLinks = 31,
-    BrokenPipe = 32,
-    NameTooLong = 36,
-    NotImplemented = 38,
-    NotEmpty = 39,
-    MessageTooLarge = 90,
+pub enum Errno {
+    EPERM = 1,
+    ENOENT = 2,
+    ESRCH = 3,
+    EINTR = 4,
+    EIO = 5,
+    ENOEXEC = 8,
+    EBADF = 9,
+    ECHILD = 10,
+    EAGAIN = 11,
+    ENOMEM = 12,
+    EFAULT = 14,
+    EEXIST = 17,
+    EXDEV = 18,
+    ENOTDIR = 20,
+    EISDIR = 21,
+    EINVAL = 22,
+    ENFILE = 23,
+    EMFILE = 24,
+    ENOSPC = 28,
+    EMLINK = 31,
+    EPIPE = 32,
+    ENAMETOOLONG = 36,
+    ENOSYS = 38,
+    ENOTEMPTY = 39,
+    EMSGSIZE = 90,
 }
 
-impl SysError {
-    /// Returns the error code for this error.
-    pub fn as_code(self) -> u16 {
+impl Errno {
+    pub fn code(self) -> u16 {
         self as u16
     }
+}
 
-    /// Decodes an error code into a `SysError` variant.
-    pub fn from_code(code: u16) -> Self {
+impl From<u16> for Errno {
+    fn from(code: u16) -> Self {
         match code {
-            1 => Self::NotPermitted,
-            2 => Self::NoEntry,
-            3 => Self::NoProcess,
-            4 => Self::Interrupted,
-            5 => Self::IoError,
-            8 => Self::InvalidExecutable,
-            9 => Self::BadDescriptor,
-            10 => Self::NoChildren,
-            11 => Self::ResourceUnavailable,
-            12 => Self::OutOfMemory,
-            14 => Self::BadAddress,
-            17 => Self::AlreadyExists,
-            18 => Self::CrossDeviceLink,
-            20 => Self::NotDirectory,
-            21 => Self::IsDirectory,
-            22 => Self::InvalidArgument,
-            23 => Self::FileTableFull,
-            24 => Self::TooManyFiles,
-            28 => Self::NoSpace,
-            31 => Self::TooManyLinks,
-            32 => Self::BrokenPipe,
-            36 => Self::NameTooLong,
-            38 => Self::NotImplemented,
-            39 => Self::NotEmpty,
-            90 => Self::MessageTooLarge,
-            _ => Self::InvalidArgument,
+            1 => Self::EPERM,
+            2 => Self::ENOENT,
+            3 => Self::ESRCH,
+            4 => Self::EINTR,
+            5 => Self::EIO,
+            8 => Self::ENOEXEC,
+            9 => Self::EBADF,
+            10 => Self::ECHILD,
+            11 => Self::EAGAIN,
+            12 => Self::ENOMEM,
+            14 => Self::EFAULT,
+            17 => Self::EEXIST,
+            18 => Self::EXDEV,
+            20 => Self::ENOTDIR,
+            21 => Self::EISDIR,
+            22 => Self::EINVAL,
+            23 => Self::ENFILE,
+            24 => Self::EMFILE,
+            28 => Self::ENOSPC,
+            31 => Self::EMLINK,
+            32 => Self::EPIPE,
+            36 => Self::ENAMETOOLONG,
+            38 => Self::ENOSYS,
+            39 => Self::ENOTEMPTY,
+            90 => Self::EMSGSIZE,
+            _ => Self::EINVAL,
         }
     }
 }
 
-impl Display for SysError {
+impl Display for Errno {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            SysError::NotPermitted => write!(f, "operation not permitted"),
-            SysError::NoEntry => write!(f, "no such entry"),
-            SysError::NoProcess => write!(f, "no such process"),
-            SysError::Interrupted => write!(f, "interrupted"),
-            SysError::IoError => write!(f, "input/output error"),
-            SysError::InvalidExecutable => write!(f, "exec format error"),
-            SysError::BadDescriptor => write!(f, "bad file descriptor"),
-            SysError::NoChildren => write!(f, "no child processes"),
-            SysError::ResourceUnavailable => write!(f, "resource temporarily unavailable"),
-            SysError::OutOfMemory => write!(f, "cannot allocate memory"),
-            SysError::BadAddress => write!(f, "bad address"),
-            SysError::AlreadyExists => write!(f, "file exists"),
-            SysError::CrossDeviceLink => write!(f, "cross-device link"),
-            SysError::NotDirectory => write!(f, "not a directory"),
-            SysError::IsDirectory => write!(f, "is a directory"),
-            SysError::InvalidArgument => write!(f, "invalid argument"),
-            SysError::FileTableFull => write!(f, "too many open files in system"),
-            SysError::TooManyFiles => write!(f, "too many open files"),
-            SysError::NoSpace => write!(f, "no space left on device"),
-            SysError::TooManyLinks => write!(f, "too many links"),
-            SysError::BrokenPipe => write!(f, "broken pipe"),
-            SysError::NameTooLong => write!(f, "file name too long"),
-            SysError::NotImplemented => write!(f, "function not implemented"),
-            SysError::NotEmpty => write!(f, "directory not empty"),
-            SysError::MessageTooLarge => write!(f, "message too large"),
+            Errno::EPERM => write!(f, "operation not permitted"),
+            Errno::ENOENT => write!(f, "no such entry"),
+            Errno::ESRCH => write!(f, "no such process"),
+            Errno::EINTR => write!(f, "interrupted"),
+            Errno::EIO => write!(f, "input/output error"),
+            Errno::ENOEXEC => write!(f, "exec format error"),
+            Errno::EBADF => write!(f, "bad file descriptor"),
+            Errno::ECHILD => write!(f, "no child processes"),
+            Errno::EAGAIN => write!(f, "resource temporarily unavailable"),
+            Errno::ENOMEM => write!(f, "cannot allocate memory"),
+            Errno::EFAULT => write!(f, "bad address"),
+            Errno::EEXIST => write!(f, "file exists"),
+            Errno::EXDEV => write!(f, "cross-device link"),
+            Errno::ENOTDIR => write!(f, "not a directory"),
+            Errno::EISDIR => write!(f, "is a directory"),
+            Errno::EINVAL => write!(f, "invalid argument"),
+            Errno::ENFILE => write!(f, "too many open files in system"),
+            Errno::EMFILE => write!(f, "too many open files"),
+            Errno::ENOSPC => write!(f, "no space left on device"),
+            Errno::EMLINK => write!(f, "too many links"),
+            Errno::EPIPE => write!(f, "broken pipe"),
+            Errno::ENAMETOOLONG => write!(f, "file name too long"),
+            Errno::ENOSYS => write!(f, "function not implemented"),
+            Errno::ENOTEMPTY => write!(f, "directory not empty"),
+            Errno::EMSGSIZE => write!(f, "message too large"),
         }
     }
 }
 
-impl From<FsError> for SysError {
+impl From<FsError> for Errno {
     fn from(e: FsError) -> Self {
         match e {
-            FsError::OutOfBlock | FsError::OutOfInode => SysError::NoSpace,
-            FsError::OutOfFile | FsError::OutOfPipe => SysError::FileTableFull,
-            FsError::OutOfRange => SysError::InvalidArgument,
-            FsError::Read | FsError::Write => SysError::IoError,
-            FsError::Create => SysError::NoSpace,
-            FsError::Link => SysError::AlreadyExists,
-            FsError::Resolve => SysError::NoEntry,
-            FsError::Type => SysError::InvalidArgument,
-            FsError::Copy => SysError::BadAddress,
+            FsError::OutOfBlock | FsError::OutOfInode => Errno::ENOSPC,
+            FsError::OutOfFile | FsError::OutOfPipe => Errno::ENFILE,
+            FsError::OutOfRange => Errno::EINVAL,
+            FsError::Read | FsError::Write => Errno::EIO,
+            FsError::Create => Errno::ENOSPC,
+            FsError::Link => Errno::EEXIST,
+            FsError::Resolve => Errno::ENOENT,
+            FsError::Type => Errno::EINVAL,
+            FsError::Copy => Errno::EFAULT,
         }
     }
 }
 
-impl From<NetError> for SysError {
+impl From<NetError> for Errno {
     fn from(value: NetError) -> Self {
         match value {
-            NetError::NotConfigured => SysError::NotPermitted,
-            NetError::QueueFull => SysError::ResourceUnavailable,
-            NetError::TableFull => SysError::FileTableFull,
-            NetError::OutOfSocket => SysError::ResourceUnavailable,
-            NetError::PortInUse => SysError::AlreadyExists,
-            NetError::BadSocket => SysError::BadDescriptor,
-            NetError::InvalidAddress => SysError::InvalidArgument,
-            NetError::MalformedPacket => SysError::InvalidArgument,
-            NetError::TransmitFailed => SysError::IoError,
-            NetError::Interrupted => SysError::Interrupted,
-            NetError::RouteNotFound => SysError::NoEntry,
-            NetError::PacketTooLarge => SysError::InvalidArgument,
-            NetError::ResourceUnavailable => SysError::ResourceUnavailable,
-            NetError::InterfaceNotFound => SysError::NoEntry,
-            NetError::ChecksumFailed => SysError::InvalidArgument,
+            NetError::NotConfigured => Errno::EPERM,
+            NetError::QueueFull => Errno::EAGAIN,
+            NetError::TableFull => Errno::ENFILE,
+            NetError::OutOfSocket => Errno::EAGAIN,
+            NetError::PortInUse => Errno::EEXIST,
+            NetError::BadSocket => Errno::EBADF,
+            NetError::InvalidAddress => Errno::EINVAL,
+            NetError::MalformedPacket => Errno::EINVAL,
+            NetError::TransmitFailed => Errno::EIO,
+            NetError::Interrupted => Errno::EINTR,
+            NetError::RouteNotFound => Errno::ENOENT,
+            NetError::PacketTooLarge => Errno::EINVAL,
+            NetError::ResourceUnavailable => Errno::EAGAIN,
+            NetError::InterfaceNotFound => Errno::ENOENT,
+            NetError::ChecksumFailed => Errno::EINVAL,
         }
     }
 }
@@ -198,26 +198,26 @@ impl<'a> SyscallArgs<'a> {
 
     /// Fetch the nth word-sized system call argument as a file descriptor and return both the
     /// descriptor and the corresponding `File`.
-    pub fn get_file(&self, index: usize) -> Result<(usize, File), SysError> {
+    pub fn get_file(&self, index: usize) -> Result<(usize, File), Errno> {
         let fd: usize = try_log!(
             self.get_int(index)
                 .try_into()
-                .or(Err(SysError::BadDescriptor))
+                .or(Err(Errno::EBADF))
         );
 
         if fd >= NOFILE {
-            err!(SysError::BadDescriptor);
+            err!(Errno::EBADF);
         }
 
         if let Some(file) = &current_proc().data().open_files[fd] {
             return Ok((fd, file.clone()));
         }
 
-        err!(SysError::BadDescriptor);
+        err!(Errno::EBADF);
     }
 
     /// Fetches a null-terminated string from user space.
-    pub fn fetch_string(&self, addr: VA, max: usize) -> Result<String, SysError> {
+    pub fn fetch_string(&self, addr: VA, max: usize) -> Result<String, Errno> {
         let (_proc, data) = current_proc_and_data_mut();
 
         let mut result = String::with_capacity(max);
@@ -227,7 +227,7 @@ impl<'a> SyscallArgs<'a> {
             try_log!(
                 data.pagetable_mut()
                     .copy_from(VA::from(addr.as_usize() + i), &mut buf)
-                    .map_err(|_| SysError::BadAddress)
+                    .map_err(|_| Errno::EFAULT)
             );
 
             if buf[0] == 0 {
@@ -275,7 +275,7 @@ pub enum Syscall {
 }
 
 impl TryFrom<usize> for Syscall {
-    type Error = SysError;
+    type Error = Errno;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         match value {
@@ -306,10 +306,52 @@ impl TryFrom<usize> for Syscall {
             25 => Ok(Syscall::Send),
             26 => Ok(Syscall::Receive),
             27 => Ok(Syscall::Random),
-            _ => Err(SysError::NotImplemented),
+            _ => Err(Errno::ENOSYS),
         }
     }
 }
+
+type SyscallHandler = fn(&SyscallArgs) -> Result<usize, Errno>;
+
+fn wrap_exit(args: &SyscallArgs) -> Result<usize, Errno> {
+    sys_exit(args)
+}
+
+fn wrap_poweroff(args: &SyscallArgs) -> Result<usize, Errno> {
+    sys_poweroff(args)
+}
+
+const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
+    let mut table: [Option<SyscallHandler>; 64] = [None; 64];
+    table[1] = Some(sys_fork);
+    table[2] = Some(wrap_exit);
+    table[3] = Some(sys_wait);
+    table[4] = Some(sys_pipe);
+    table[5] = Some(sys_read);
+    table[6] = Some(sys_kill);
+    table[7] = Some(sys_exec);
+    table[8] = Some(sys_fstat);
+    table[9] = Some(sys_chdir);
+    table[10] = Some(sys_dup);
+    table[11] = Some(sys_getpid);
+    table[12] = Some(sys_sbrk);
+    table[13] = Some(sys_sleep);
+    table[14] = Some(sys_uptime);
+    table[15] = Some(sys_open);
+    table[16] = Some(sys_write);
+    table[17] = Some(sys_mknod);
+    table[18] = Some(sys_unlink);
+    table[19] = Some(sys_link);
+    table[20] = Some(sys_mkdir);
+    table[21] = Some(sys_close);
+    table[22] = Some(wrap_poweroff);
+    table[23] = Some(sys_ioctl);
+    table[24] = Some(sys_socket);
+    table[25] = Some(sys_send);
+    table[26] = Some(sys_receive);
+    table[27] = Some(sys_random);
+    table
+};
 
 /// Handle a system call.
 ///
@@ -320,37 +362,14 @@ pub unsafe fn syscall(trapframe: &mut TrapFrame) {
     let proc = current_proc();
     let args = SyscallArgs::new(trapframe, proc);
 
-    let result = match Syscall::try_from(trapframe.a7) {
-        Ok(syscall) => match syscall {
-            Syscall::Fork => sys_fork(&args),
-            Syscall::Exit => sys_exit(&args),
-            Syscall::Wait => sys_wait(&args),
-            Syscall::Pipe => sys_pipe(&args),
-            Syscall::Read => sys_read(&args),
-            Syscall::Kill => sys_kill(&args),
-            Syscall::Exec => sys_exec(&args),
-            Syscall::Fstat => sys_fstat(&args),
-            Syscall::Chdir => sys_chdir(&args),
-            Syscall::Dup => sys_dup(&args),
-            Syscall::Getpid => sys_getpid(&args),
-            Syscall::Sbrk => sys_sbrk(&args),
-            Syscall::Sleep => sys_sleep(&args),
-            Syscall::Uptime => sys_uptime(&args),
-            Syscall::Open => sys_open(&args),
-            Syscall::Write => sys_write(&args),
-            Syscall::Mknod => sys_mknod(&args),
-            Syscall::Unlink => sys_unlink(&args),
-            Syscall::Link => sys_link(&args),
-            Syscall::Mkdir => sys_mkdir(&args),
-            Syscall::Close => sys_close(&args),
-            Syscall::Poweroff => sys_poweroff(&args),
-            Syscall::Ioctl => sys_ioctl(&args),
-            Syscall::Socket => sys_socket(&args),
-            Syscall::Send => sys_send(&args),
-            Syscall::Receive => sys_receive(&args),
-            Syscall::Random => sys_random(&args),
-        },
-        Err(e) => Err(e),
+    let num = trapframe.a7;
+    let result = if num < SYSCALL_TABLE.len() {
+        match SYSCALL_TABLE[num] {
+            Some(handler) => handler(&args),
+            None => Err(Errno::ENOSYS),
+        }
+    } else {
+        Err(Errno::ENOSYS)
     };
 
     trapframe.a0 = match log!(result) {
@@ -366,7 +385,7 @@ pub unsafe fn syscall(trapframe: &mut TrapFrame) {
                     proc.data().name,
                 );
             }
-            (-(error.as_code() as isize)) as usize
+            (-(error.code() as isize)) as usize
         }
     };
 }

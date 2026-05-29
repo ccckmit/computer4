@@ -23,7 +23,7 @@ impl OptParser {
         OptParser {
             args,
             pos: 1, // skip program name
-            chars: [].into_iter(),
+            chars: Vec::new().into_iter(),
             current_opt: None,
         }
     }
@@ -60,8 +60,7 @@ impl OptParser {
             }
 
             if arg.starts_with("--") {
-                // Long option
-                let (name, val) = if let Some(eq_idx) = arg.find('=') {
+                let (name, inline_val) = if let Some(eq_idx) = arg.find('=') {
                     (arg[2..eq_idx].to_string(), Some(arg[eq_idx+1..].to_string()))
                 } else {
                     (arg[2..].to_string(), None)
@@ -69,17 +68,12 @@ impl OptParser {
 
                 self.pos += 1;
 
-                if let Some((_, short, takes_val)) = longopts.iter().find(|(n, _, _)| *n == name) {
-                    let val = if val.is_none() && takes_val {
-                        let v = self.args.get(self.pos).cloned();
-                        self.pos += 1;
-                        v
-                    } else {
-                        val
-                    };
-                    return Some((Opt::Long(name), val));
-                }
-                // Unknown long option — return it anyway
+                let takes_val = longopts.iter().any(|(n, _, tv)| *n == name && *tv);
+                let val = if inline_val.is_none() && takes_val {
+                    self.args.get(self.pos).cloned().map(|v| { self.pos += 1; v })
+                } else {
+                    inline_val
+                };
                 return Some((Opt::Long(name), val));
             }
 

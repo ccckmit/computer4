@@ -61,7 +61,7 @@ fn test_write_to_closed_read_end() {
 
     assert_eq!(
         write(write_fd, b"data"),
-        Err(SysError::BrokenPipe),
+        Err(Errno::EPIPE),
         "write to broken pipe must fail"
     );
 

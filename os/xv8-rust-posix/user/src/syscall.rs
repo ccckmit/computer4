@@ -212,7 +212,7 @@ pub mod raw {
     }
 }
 
-use kernel::abi::{MAXPATH, Stat, SysError};
+use kernel::abi::{MAXPATH, Stat, Errno};
 
 /// A file descriptor returned by or passed to syscalls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,9 +243,9 @@ impl core::fmt::Display for Fd {
 struct Path<'a>(&'a str);
 
 impl<'a> Path<'a> {
-    fn new(s: &'a str) -> Result<Self, SysError> {
+    fn new(s: &'a str) -> Result<Self, Errno> {
         if s.len() >= MAXPATH || s.bytes().any(|b| b == 0) {
-            return Err(SysError::NameTooLong);
+            return Err(Errno::ENAMETOOLONG);
         }
         Ok(Self(s))
     }
@@ -260,26 +260,26 @@ impl<'a> Path<'a> {
 
 /// Converts a raw signed syscall return into `Result`, treating negative values as error codes.
 #[inline(always)]
-fn check(ret: isize) -> Result<usize, SysError> {
+fn check(ret: isize) -> Result<usize, Errno> {
     if ret >= 0 {
         Ok(ret as usize)
     } else {
-        Err(SysError::from_code((-ret) as u16))
+        Err(Errno::from((-ret) as u16))
     }
 }
 
-/// Converts a raw syscall return into `Result<(), SysError>`.
+/// Converts a raw syscall return into `Result<(), Errno>`.
 #[inline(always)]
-fn check_unit(ret: isize) -> Result<(), SysError> {
+fn check_unit(ret: isize) -> Result<(), Errno> {
     check(ret).map(|_| ())
 }
 
 /// Validates a path string and creates a C-compatible path buffer.
-fn validate_path(path: &str) -> Result<[u8; MAXPATH], SysError> {
+fn validate_path(path: &str) -> Result<[u8; MAXPATH], Errno> {
     Ok(Path::new(path)?.as_cpath())
 }
 
-pub fn fork() -> Result<usize, SysError> {
+pub fn fork() -> Result<usize, Errno> {
     check(raw::fork())
 }
 
@@ -292,25 +292,25 @@ pub fn exit_with_msg(msg: &str) -> ! {
     exit(1);
 }
 
-pub fn wait(status: &mut usize) -> Result<usize, SysError> {
+pub fn wait(status: &mut usize) -> Result<usize, Errno> {
     check(raw::wait(status as *mut usize))
 }
 
-pub fn pipe() -> Result<(Fd, Fd), SysError> {
+pub fn pipe() -> Result<(Fd, Fd), Errno> {
     let mut fds = [0usize; 2];
     check_unit(raw::pipe(fds.as_mut_ptr()))?;
     Ok((Fd(fds[0]), Fd(fds[1])))
 }
 
-pub fn read(fd: Fd, buf: &mut [u8]) -> Result<usize, SysError> {
+pub fn read(fd: Fd, buf: &mut [u8]) -> Result<usize, Errno> {
     check(raw::read(fd.as_raw(), buf.as_mut_ptr(), buf.len()))
 }
 
-pub fn write(fd: Fd, buf: &[u8]) -> Result<usize, SysError> {
+pub fn write(fd: Fd, buf: &[u8]) -> Result<usize, Errno> {
     check(raw::write(fd.as_raw(), buf.as_ptr(), buf.len()))
 }
 
-pub fn kill(pid: usize) -> Result<(), SysError> {
+pub fn kill(pid: usize) -> Result<(), Errno> {
     check_unit(raw::kill(pid))
 }
 
@@ -319,8 +319,9 @@ pub fn kill(pid: usize) -> Result<(), SysError> {
 /// `argv` contains the argument strings. This function packs them into a contiguous
 /// stack buffer with null terminators and builds the pointer array expected by the kernel.
 ///
-/// Returns `SysError` because if `exec` returns at all, it failed.
-pub fn exec(path: &str, argv: &[&str]) -> SysError {
+/// Returns `Errno` because if `exec` returns at all, it failed.
+
+pub fn exec(path: &str, argv: &[&str]) -> Errno {
     let cpath = match validate_path(path) {
         Ok(cpath) => cpath,
         Err(e) => return e,
@@ -343,19 +344,19 @@ pub fn exec(path: &str, argv: &[&str]) -> SysError {
 
     let ret = raw::exec(cpath.as_ptr(), ptrs.as_ptr());
     // exec only returns on failure
-    SysError::from_code((-ret) as u16)
+    Errno::from((-ret) as u16)
 }
 
-pub fn fstat(fd: Fd, stat: &mut Stat) -> Result<(), SysError> {
+pub fn fstat(fd: Fd, stat: &mut Stat) -> Result<(), Errno> {
     check_unit(raw::fstat(fd.as_raw(), stat as *mut Stat))
 }
 
-pub fn chdir(path: &str) -> Result<(), SysError> {
+pub fn chdir(path: &str) -> Result<(), Errno> {
     let cpath = validate_path(path)?;
     check_unit(raw::chdir(cpath.as_ptr()))
 }
 
-pub fn dup(fd: Fd) -> Result<Fd, SysError> {
+pub fn dup(fd: Fd) -> Result<Fd, Errno> {
     check(raw::dup(fd.as_raw())).map(Fd)
 }
 
@@ -363,11 +364,11 @@ pub fn getpid() -> usize {
     raw::getpid() as usize
 }
 
-pub fn sbrk(n: isize) -> Result<usize, SysError> {
+pub fn sbrk(n: isize) -> Result<usize, Errno> {
     check(raw::sbrk(n as usize))
 }
 
-pub fn sleep(ticks: usize) -> Result<(), SysError> {
+pub fn sleep(ticks: usize) -> Result<(), Errno> {
     check_unit(raw::sleep(ticks))
 }
 
@@ -375,32 +376,32 @@ pub fn uptime() -> usize {
     raw::uptime() as usize
 }
 
-pub fn open(path: &str, flags: usize) -> Result<Fd, SysError> {
+pub fn open(path: &str, flags: usize) -> Result<Fd, Errno> {
     let cpath = validate_path(path)?;
     check(raw::open(cpath.as_ptr(), flags)).map(Fd)
 }
 
-pub fn close(fd: Fd) -> Result<(), SysError> {
+pub fn close(fd: Fd) -> Result<(), Errno> {
     check_unit(raw::close(fd.as_raw()))
 }
 
-pub fn mknod(path: &str, major: usize, minor: usize) -> Result<(), SysError> {
+pub fn mknod(path: &str, major: usize, minor: usize) -> Result<(), Errno> {
     let cpath = validate_path(path)?;
     check_unit(raw::mknod(cpath.as_ptr(), major, minor))
 }
 
-pub fn unlink(path: &str) -> Result<(), SysError> {
+pub fn unlink(path: &str) -> Result<(), Errno> {
     let cpath = validate_path(path)?;
     check_unit(raw::unlink(cpath.as_ptr()))
 }
 
-pub fn link(old: &str, new: &str) -> Result<(), SysError> {
+pub fn link(old: &str, new: &str) -> Result<(), Errno> {
     let cold = validate_path(old)?;
     let cnew = validate_path(new)?;
     check_unit(raw::link(cold.as_ptr(), cnew.as_ptr()))
 }
 
-pub fn mkdir(path: &str) -> Result<(), SysError> {
+pub fn mkdir(path: &str) -> Result<(), Errno> {
     let cpath = validate_path(path)?;
     check_unit(raw::mkdir(cpath.as_ptr()))
 }
@@ -409,15 +410,15 @@ pub fn poweroff(code: u32) -> ! {
     raw::poweroff(code)
 }
 
-pub fn ioctl(fd: Fd, cmd: usize, arg: usize) -> Result<usize, SysError> {
+pub fn ioctl(fd: Fd, cmd: usize, arg: usize) -> Result<usize, Errno> {
     check(raw::ioctl(fd.as_raw(), cmd, arg))
 }
 
-pub fn socket(port: u16) -> Result<Fd, SysError> {
+pub fn socket(port: u16) -> Result<Fd, Errno> {
     check(raw::socket(port)).map(Fd)
 }
 
-pub fn send(fd: Fd, buf: &[u8], dest_ip: &[u8; 4], dest_port: u16) -> Result<usize, SysError> {
+pub fn send(fd: Fd, buf: &[u8], dest_ip: &[u8; 4], dest_port: u16) -> Result<usize, Errno> {
     check(raw::send(
         fd.as_raw(),
         buf.as_ptr(),
@@ -432,7 +433,7 @@ pub fn receive(
     buf: &mut [u8],
     src_ip: &mut [u8; 4],
     src_port: &mut u16,
-) -> Result<usize, SysError> {
+) -> Result<usize, Errno> {
     check(raw::receive(
         fd.as_raw(),
         buf.as_mut_ptr(),
@@ -442,6 +443,6 @@ pub fn receive(
     ))
 }
 
-pub fn random(buf: &mut [u8]) -> Result<(), SysError> {
+pub fn random(buf: &mut [u8]) -> Result<(), Errno> {
     check_unit(raw::random(buf.as_mut_ptr(), buf.len()))
 }

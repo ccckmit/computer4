@@ -33,11 +33,9 @@ pub fn mode_string(mode: u32) -> [u8; 10] {
     s
 }
 
-/// Format a number with comma separators (or just decimal)
-pub fn format_number(n: u64) -> alloc::string::String {
-    // Simple formatting without allocation in no_std
-    // For now, return the decimal representation
-    let mut buf = [0u8; 20];
+/// Format a number as a string (no allocation).
+/// Returns the slice into the provided buffer.
+pub fn format_number<'a>(n: u64, buf: &'a mut [u8; 20]) -> &'a str {
     let mut i = 20;
     let mut remaining = n;
     loop {
@@ -48,8 +46,7 @@ pub fn format_number(n: u64) -> alloc::string::String {
             break;
         }
     }
-    let s = core::str::from_utf8(&buf[i..]).unwrap_or("");
-    alloc::string::String::from(s)
+    core::str::from_utf8(&buf[i..]).unwrap_or("")
 }
 
 #[cfg(test)]
@@ -58,8 +55,7 @@ mod tests {
 
     #[test]
     fn test_mode_string_regular() {
-        // -rwxr-xr-x
-        let s = mode_string(0o755);
+        let s = mode_string(0o100755); // S_IFREG | 0755
         assert_eq!(&s, b"-rwxr-xr-x");
     }
 
@@ -71,7 +67,7 @@ mod tests {
 
     #[test]
     fn test_mode_string_setuid() {
-        let s = mode_string(0o4755);
+        let s = mode_string(0o104755); // S_IFREG | 04755
         assert_eq!(&s, b"-rwsr-xr-x");
     }
 
@@ -83,6 +79,12 @@ mod tests {
 
     #[test]
     fn test_format_number() {
-        // Skip alloc test for now since we need alloc
+        let mut buf = [0u8; 20];
+        let s = format_number(0, &mut buf);
+        assert_eq!(s, "0");
+        let s = format_number(12345, &mut buf);
+        assert_eq!(s, "12345");
+        let s = format_number(999999, &mut buf);
+        assert_eq!(s, "999999");
     }
 }

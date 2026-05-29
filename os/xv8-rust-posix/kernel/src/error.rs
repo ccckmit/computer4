@@ -3,7 +3,7 @@ use core::fmt::Display;
 use crate::exec::ExecError;
 use crate::fs::FsError;
 use crate::net::NetError;
-use crate::syscall::SysError;
+use crate::syscall::Errno;
 use crate::virtio_disk::VirtioError;
 use crate::vm::VmError;
 
@@ -14,7 +14,7 @@ pub enum KernelError {
     InvalidArgument,
     OutOfProc,
     Vm(VmError),
-    Sys(SysError),
+    Sys(Errno),
     Fs(FsError),
     Exec(ExecError),
     VirtioError(VirtioError),
@@ -33,8 +33,8 @@ impl From<VmError> for KernelError {
     }
 }
 
-impl From<SysError> for KernelError {
-    fn from(value: SysError) -> Self {
+impl From<Errno> for KernelError {
+    fn from(value: Errno) -> Self {
         Self::Sys(value)
     }
 }

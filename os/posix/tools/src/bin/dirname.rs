@@ -8,10 +8,20 @@ fn main() {
     }
 
     let path = Path::new(&args[1]);
-    let parent = match path.parent() {
-        Some(p) if p.as_os_str().is_empty() => ".",
-        Some(p) => p.to_string_lossy().as_ref(),
-        None => ".",
+
+    // POSIX: dirname / -> /
+    //         dirname // -> // (may be implementation-defined)
+    //         dirname /foo -> /
+    //         dirname foo -> .
+    //         dirname foo/bar -> foo
+    let parent = if args[1] == "/" || args[1] == "//" {
+        args[1].clone()
+    } else {
+        match path.parent() {
+            Some(p) if p.as_os_str().is_empty() => ".".to_string(),
+            Some(p) => p.to_string_lossy().to_string(),
+            None => ".".to_string(),
+        }
     };
 
     println!("{}", parent);

@@ -7,8 +7,9 @@
 - [x] 複製 xv7 原始碼，更名 crate（octopos → xv8）
 - [x] 修正 QEMU `-cpu max` 相容問題
 - [x] 確認 `./test.sh` 全部通過（7 tests）
-- [ ] 修改開機訊息為 `xv8 kernel is booting`
-- [ ] 更新版權標頭、README
+- [x] 修改開機訊息為 `xv8 kernel is booting`
+- [x] 更新版權標頭、README
+- [x] 撰寫 v0.1 版本記錄 `_doc/v0.1.md`
 
 **交付：** `cargo run --release` 可啟動 shell，`./test.sh` PASS。
 

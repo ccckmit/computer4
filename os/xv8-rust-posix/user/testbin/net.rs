@@ -18,7 +18,7 @@ fn test_socket_duplicate_port() {
 
     assert_eq!(
         socket(26201),
-        Err(SysError::AlreadyExists),
+        Err(Errno::EEXIST),
         "duplicate port must return AlreadyExists"
     );
 

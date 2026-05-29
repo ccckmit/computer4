@@ -143,7 +143,7 @@ fn test_nofile_limit() {
             Err(e) => {
                 assert_eq!(
                     e,
-                    SysError::TooManyFiles,
+                    Errno::EMFILE,
                     "expected TooManyFiles, got {:?}",
                     e
                 );

@@ -28,7 +28,7 @@ fn test_create_write_read() {
 fn test_open_nonexistent() {
     assert_eq!(
         open("/fs_does_not_exist", OpenFlag::READ_ONLY),
-        Err(SysError::NoEntry),
+        Err(Errno::ENOENT),
         "open nonexistent should fail"
     );
 }
@@ -142,7 +142,7 @@ fn test_open_flags() {
     let fd = open("/fs_flags", OpenFlag::READ_ONLY).expect("open rdonly");
     assert_eq!(
         write(fd, b"nope"),
-        Err(SysError::BadDescriptor),
+        Err(Errno::EBADF),
         "write to rdonly must fail"
     );
     close(fd).expect("close rdonly");
@@ -151,7 +151,7 @@ fn test_open_flags() {
     let mut buf = [0u8; 8];
     assert_eq!(
         read(fd, &mut buf),
-        Err(SysError::BadDescriptor),
+        Err(Errno::EBADF),
         "read from wronly must fail"
     );
     close(fd).expect("close wronly");
