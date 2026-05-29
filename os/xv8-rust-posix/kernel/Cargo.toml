@@ -1,0 +1,27 @@
+[package]
+name = "xv8"
+version = "0.1.0"
+edition = "2024"
+authors = ["Boran Seckin <boran@boranseckin.com>"]
+description = "xv8-rust-posix — POSIX operating system for RISC-V"
+repository = ""
+license = "MIT"
+keywords = ["riscv", "xv6"]
+default-run = "xv8"
+
+[lib]
+name = "kernel"
+path = "src/lib.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "xv8"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+buddy-alloc = "0.6"
