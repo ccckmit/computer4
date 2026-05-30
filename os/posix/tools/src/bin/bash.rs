@@ -44,9 +44,27 @@ impl Lexer {
                     self.advance();
                     if self.peek() == Some('(') {
                         self.advance();
-                        return Some("$((".into());
+                        let mut depth = 1; let mut expr = String::new();
+                        while depth > 0 {
+                            match self.advance()? {
+                                '(' => { expr.push('('); depth += 1; }
+                                ')' => { depth -= 1; if depth == 0 { expr.push(')'); break; } expr.push(')'); }
+                                '\n' => {}
+                                ch => expr.push(ch),
+                            }
+                        }
+                        return Some(format!("$((", expr));
                     }
-                    return Some("$(".into());
+let mut depth = 1; let mut cmd = String::new();
+                        while depth > 0 {
+                            match self.advance()? {
+                                '(' => { cmd.push('('); depth += 1; }
+                                ')' => { depth -= 1; if depth == 0 { break; } cmd.push(')'); }
+                            '\n' => {}
+                            ch => cmd.push(ch),
+                        }
+                    }
+                    return Some(format!("$(", cmd));
                 }
                 if self.peek() == Some('{') {
                     self.advance();
@@ -74,7 +92,7 @@ impl Lexer {
                                 while depth > 0 {
                                     match self.advance()? {
                                         '(' => { cmd.push('('); depth += 1; }
-                                        ')' => { depth -= 1; if depth == 0 { break; } cmd.push(')'); }
+')' => { depth -= 1; if depth == 0 { cmd.push(')'); break; } cmd.push(')'); }
                                         '\n' => {}
                                         ch => cmd.push(ch),
                                     }
@@ -123,52 +141,47 @@ fn expand_vars(s: &str, g: &HashMap<String, String>) -> String {
     let mut i = 0;
 
     while i < n {
-        if cs[i] == '\\' && i + 1 < n { r.push(cs[i + 1]); i += 2; continue; }
-        if cs[i] == '$' {
+        let ch = cs[i];
+        if ch == '\\' && i + 1 < n {
+            r.push(cs[i + 1]);
+            i += 2;
+        } else if ch == '$' {
             i += 1;
             if i >= n { r.push('$'); break; }
 
-            // $((
-            if cs[i] == '(' && i + 1 < n && cs[i + 1] == '(' {
+            if i + 1 < n && cs[i] == '(' && cs[i + 1] == '(' {
                 i += 2;
-                let mut depth = 1; let mut expr = String::new();
+                let mut depth = 1;
+                let mut expr = String::new();
                 while depth > 0 && i < n {
-                    match cs[i] {
-                        '(' => { expr.push(cs[i]); depth += 1; }
-                        ')' => { depth -= 1; if depth == 0 { break; } expr.push(cs[i]); }
-                        ' ' | '\t' | '\n' => expr.push(cs[i]),
-                        '$' if i + 1 < n && cs[i + 1] == '(' => { expr.push('$'); i += 1; }
-                        ch => expr.push(ch),
+                    if cs[i] == '(' { depth += 1; }
+                    else if cs[i] == ')' {
+                        depth -= 1;
+                        if depth == 0 { i += 1; break; }
                     }
+                    else { expr.push(cs[i]); }
                     i += 1;
                 }
-                let out = Command::new("sh").arg("-c").arg(format!("echo $(( {} ))", expr.trim())).output();
-                r.push_str(&String::from_utf8_lossy(&out.ok().map(|o| o.stdout).unwrap_or_default()).trim().to_string());
+                if let Ok(o) = Command::new("sh").arg("-c").arg(&format!("echo $(( {} ))", expr.trim())).output() {
+                    r.push_str(String::from_utf8_lossy(&o.stdout).trim());
+                }
+            } else if cs[i] == '(' {
                 i += 1;
-                continue;
-            }
-
-            // $(
-            if cs[i] == '(' {
-                i += 1;
-                let mut depth = 1; let mut cmd = String::new();
+                let mut depth = 1;
+                let mut cmd = String::new();
                 while depth > 0 && i < n {
-                    match cs[i] {
-                        '(' => { cmd.push('('); depth += 1; }
-                        ')' => { depth -= 1; if depth == 0 { break; } cmd.push(')'); }
-                        '\n' => {}
-                        ch => cmd.push(ch),
+                    if cs[i] == '(' { depth += 1; }
+                    else if cs[i] == ')' {
+                        depth -= 1;
+                        if depth == 0 { i += 1; break; }
                     }
+                    else { cmd.push(cs[i]); }
                     i += 1;
                 }
                 if let Ok(o) = Command::new("sh").arg("-c").arg(&cmd).output() {
                     r.push_str(String::from_utf8_lossy(&o.stdout).trim());
                 }
-                continue;
-            }
-
-            // ${
-            if cs[i] == '{' {
+            } else if cs[i] == '{' {
                 i += 1;
                 let mut name = String::new();
                 while i < n && cs[i] != '}' && cs[i] != ' ' && cs[i] != '\n' && cs[i] != ':' {
@@ -186,21 +199,19 @@ fn expand_vars(s: &str, g: &HashMap<String, String>) -> String {
                     let val = g.get(&name).cloned().unwrap_or_default();
                     r.push_str(&val);
                 }
-                while i < n && cs[i] != '}' { i += 1; }
+                if i < n && cs[i] == '}' { i += 1; }
+            } else if cs[i] == '?' {
+                r.push_str(&get_exit().to_string());
                 i += 1;
-                continue;
+            } else {
+                let mut name = String::new();
+                while i < n && (cs[i].is_alphanumeric() || cs[i] == '_') {
+                    name.push(cs[i]); i += 1;
+                }
+                if name.is_empty() { r.push('$'); }
+                else { r.push_str(&g.get(&name).cloned().unwrap_or_default()); }
             }
-
-            // $?
-            if cs[i] == '?' { r.push_str(&get_exit().to_string()); i += 1; continue; }
-
-            let mut name = String::new();
-            while i < n && (cs[i].is_alphanumeric() || cs[i] == '_') { name.push(cs[i]); i += 1; }
-            if name.is_empty() { r.push('$'); continue; }
-            r.push_str(&g.get(&name).cloned().unwrap_or_default());
-            continue;
-        }
-        if cs[i] == '`' {
+        } else if ch == '`' {
             i += 1;
             let mut cmd = String::new();
             while i < n && cs[i] != '`' { cmd.push(cs[i]); i += 1; }
@@ -208,9 +219,10 @@ fn expand_vars(s: &str, g: &HashMap<String, String>) -> String {
             if let Ok(o) = Command::new("sh").arg("-c").arg(&cmd).output() {
                 r.push_str(String::from_utf8_lossy(&o.stdout).trim());
             }
-            continue;
+        } else {
+            r.push(ch);
+            i += 1;
         }
-        r.push(cs[i]); i += 1;
     }
     r
 }
@@ -277,7 +289,11 @@ struct Shell {
 }
 
 impl Shell {
-    fn new() -> Self { Shell { aliases: HashMap::new(), globals: HashMap::new() } }
+    fn new() -> Self {
+        let mut globals: HashMap<String, String> = env::vars().collect();
+        globals.insert("HOME".into(), env::var("HOME").unwrap_or_else(|_| "/".into()));
+        Shell { aliases: HashMap::new(), globals }
+    }
 
     fn run(&mut self, line: &str) -> i32 {
         let toks: Vec<String> = Lexer::new(line).collect();
@@ -341,6 +357,22 @@ impl Shell {
 
         let expanded = self.expand_args(args);
         if expanded.is_empty() { return 0; }
+
+        // Handle assignment: VAR=value
+        if expanded.len() >= 1 {
+            let first = &expanded[0];
+            if let Some(eq_pos) = first.find('=') {
+                let var = &first[..eq_pos];
+                let val = &first[eq_pos + 1..];
+                if !var.is_empty() && !var.contains('/') && var.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    self.globals.insert(var.to_string(), val.to_string());
+                    if expanded.len() == 1 { return 0; }
+                    let rest = &expanded[1..];
+                    return self.exec_builtin_or_external(&rest[0], &rest[1..]);
+                }
+            }
+        }
+
         let first = &expanded[0];
         let rest: Vec<String> = expanded[1..].to_vec();
 
@@ -353,8 +385,32 @@ impl Shell {
 
     fn expand_args(&self, args: &[String]) -> Vec<String> {
         let mut r = Vec::new();
-        for a in args {
+        let mut i = 0;
+        while i < args.len() {
+            let a = &args[i];
+            let needs_lookahead = a == "$(" || a == "$(( ";
+            if needs_lookahead && i + 1 < args.len() {
+                let mut combined = a.clone();
+                let mut depth = if a == "$(( " { 2 } else { 1 };
+                let mut j = i + 1;
+                while j < args.len() && depth > 0 {
+                    let tok = &args[j];
+                    combined.push(' ');
+                    combined.push_str(tok);
+                    for ch in tok.chars() {
+                        if ch == '(' { depth += 1; }
+                        if ch == ')' { depth -= 1; }
+                    }
+                    j += 1;
+                }
+                if depth == 0 {
+                    i = j;
+                    for e in expand(&combined, &self.globals) { r.push(e); }
+                    continue;
+                }
+            }
             for e in expand(a, &self.globals) { r.push(e); }
+            i += 1;
         }
         r
     }

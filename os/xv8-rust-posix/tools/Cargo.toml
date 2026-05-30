@@ -1,0 +1,139 @@
+[package]
+name = "xv8-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kernel = { package = "xv8", path = "../../kernel" }
+
+[lib]
+name = "xv8tools"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cp"
+path = "src/bin/cp.rs"
+
+[[bin]]
+name = "mv"
+path = "src/bin/mv.rs"
+
+[[bin]]
+name = "chmod"
+path = "src/bin/chmod.rs"
+
+[[bin]]
+name = "chown"
+path = "src/bin/chown.rs"
+
+[[bin]]
+name = "touch"
+path = "src/bin/touch.rs"
+
+[[bin]]
+name = "head"
+path = "src/bin/head.rs"
+
+[[bin]]
+name = "tail"
+path = "src/bin/tail.rs"
+
+[[bin]]
+name = "sort"
+path = "src/bin/sort.rs"
+
+[[bin]]
+name = "uniq"
+path = "src/bin/uniq.rs"
+
+[[bin]]
+name = "cut"
+path = "src/bin/cut.rs"
+
+[[bin]]
+name = "tr"
+path = "src/bin/tr.rs"
+
+[[bin]]
+name = "mkdir"
+path = "src/bin/mkdir.rs"
+
+[[bin]]
+name = "rmdir"
+path = "src/bin/rmdir.rs"
+
+[[bin]]
+name = "ln"
+path = "src/bin/ln.rs"
+
+[[bin]]
+name = "readlink"
+path = "src/bin/readlink.rs"
+
+[[bin]]
+name = "symlink"
+path = "src/bin/symlink.rs"
+
+[[bin]]
+name = "dirname"
+path = "src/bin/dirname.rs"
+
+[[bin]]
+name = "basename"
+path = "src/bin/basename.rs"
+
+[[bin]]
+name = "test"
+path = "src/bin/test.rs"
+
+[[bin]]
+name = "env"
+path = "src/bin/env.rs"
+
+[[bin]]
+name = "printenv"
+path = "src/bin/printenv.rs"
+
+[[bin]]
+name = "id"
+path = "src/bin/id.rs"
+
+[[bin]]
+name = "uname"
+path = "src/bin/uname.rs"
+
+[[bin]]
+name = "pwd"
+path = "src/bin/pwd.rs"
+
+[[bin]]
+name = "stat"
+path = "src/bin/stat.rs"
+
+[[bin]]
+name = "wc"
+path = "src/bin/wc.rs"
+
+[[bin]]
+name = "tee"
+path = "src/bin/tee.rs"
+
+[[bin]]
+name = "expr"
+path = "src/bin/expr.rs"
+
+[[bin]]
+name = "printf"
+path = "src/bin/printf.rs"
+
+[[bin]]
+name = "nohup"
+path = "src/bin/nohup.rs"
+
+[[bin]]
+name = "nice"
+path = "src/bin/nice.rs"
+
+[[bin]]
+name = "kill"
+path = "src/bin/kill.rs"

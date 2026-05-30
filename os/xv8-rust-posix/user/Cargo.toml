@@ -253,5 +253,145 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "cp_xv8"
+path = "bin/cp_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "chmod_xv8"
+path = "bin/chmod_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "touch_xv8"
+path = "bin/touch_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "chown_xv8"
+path = "bin/chown_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "cut_xv8"
+path = "bin/cut_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "head_xv8"
+path = "bin/head_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "mv_xv8"
+path = "bin/mv_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "sort_xv8"
+path = "bin/sort_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "tail_xv8"
+path = "bin/tail_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "tr_xv8"
+path = "bin/tr_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "uniq_xv8"
+path = "bin/uniq_xv8.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "dirname"
+path = "bin/dirname.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "basename"
+path = "bin/basename.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "readlink"
+path = "bin/readlink.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "symlink"
+path = "bin/symlink.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "test"
+path = "bin/test.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "expr"
+path = "bin/expr.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "printf"
+path = "bin/printf.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "printenv"
+path = "bin/printenv.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "env"
+path = "bin/env.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }
