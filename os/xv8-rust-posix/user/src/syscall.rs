@@ -59,6 +59,22 @@ pub mod raw {
     }
 
     #[inline(always)]
+    fn syscall4(syscall: Syscall, a0: usize, a1: usize, a2: usize, a3: usize) -> isize {
+        let ret: isize;
+        unsafe {
+            asm!(
+                "ecall",
+                in("a7") syscall as usize,
+                inlateout("a0") a0 as isize => ret,
+                in("a1") a1,
+                in("a2") a2,
+                in("a3") a3,
+            );
+        }
+        ret
+    }
+
+    #[inline(always)]
     fn syscall5(syscall: Syscall, a0: usize, a1: usize, a2: usize, a3: usize, a4: usize) -> isize {
         let ret: isize;
         unsafe {
@@ -351,6 +367,14 @@ pub mod raw {
 
     pub fn setgid(gid: u32) -> isize {
         syscall1(Syscall::SetGid, gid as usize)
+    }
+
+    pub fn mount(source: *const u8, target: *const u8, fstype: *const u8, flags: u32) -> isize {
+        syscall4(Syscall::Mount, source as usize, target as usize, fstype as usize, flags as usize)
+    }
+
+    pub fn umount(target: *const u8) -> isize {
+        syscall1(Syscall::Umount, target as usize)
     }
 }
 

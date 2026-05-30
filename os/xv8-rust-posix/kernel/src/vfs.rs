@@ -1,4 +1,4 @@
-use core::slice;
+use alloc::format;
 use core::str;
 
 use crate::abi::Errno;
@@ -118,7 +118,7 @@ const PROC_SELF_STATUS_ID: u64 = 3;
 
 impl ProcFs {
     fn status_content() -> &'static [u8] {
-        let pid = proc::current_pid().as_usize();
+        let pid = unsafe { proc::current_id() };
         // Static buffer — one page worth
         static mut BUF: [u8; 512] = [0; 512];
         let s = format!(
@@ -260,20 +260,21 @@ impl VfsOps for DevFs {
             DEV_NULL_ID => Stat {
                 r#type: InodeType::Device,
                 mode: crate::fs::mode::S_IFCHR | 0o666,
-                major: 1,
-                minor: 0,
                 nlink: 1,
                 ..Stat::default()
             },
             DEV_ZERO_ID => Stat {
                 r#type: InodeType::Device,
                 mode: crate::fs::mode::S_IFCHR | 0o666,
-                major: 1,
-                minor: 1,
                 nlink: 1,
                 ..Stat::default()
             },
             _ => Stat::default(),
         }
     }
+}
+
+/// Initialize VFS - must be called after fs::init() to wire up mount checks
+pub fn init() {
+    VFS_CHECK_MOUNT.initialize(|| -> Result<fn(&str) -> Option<(&'static dyn VfsOps, u64)>, ()> { Ok(check_mount) });
 }

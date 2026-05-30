@@ -813,3 +813,30 @@ pub fn sys_umask(args: &SyscallArgs) -> Result<usize, Errno> {
     data.umask = new_mask & 0o777;
     Ok(old as usize)
 }
+
+pub fn sys_mount(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path_addr = args.get_addr(0);
+    let path = args.fetch_string(path_addr, MAXPATH)?;
+    let _fstype = args.fetch_string(args.get_addr(1), 32)?; // ignored for now
+    let _flags = args.get_raw(2);
+
+    let fs: &'static dyn crate::vfs::VfsOps = match path.as_str() {
+        "/proc" => {
+            static PROCFS: crate::vfs::ProcFs = crate::vfs::ProcFs;
+            &PROCFS
+        }
+        "/dev" => {
+            static DEVFS: crate::vfs::DevFs = crate::vfs::DevFs;
+            &DEVFS
+        }
+        _ => return Err(Errno::EINVAL),
+    };
+
+    crate::vfs::mount(&path, fs, 1)
+}
+
+pub fn sys_umount(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path_addr = args.get_addr(0);
+    let path = args.fetch_string(path_addr, MAXPATH)?;
+    crate::vfs::umount(&path)
+}

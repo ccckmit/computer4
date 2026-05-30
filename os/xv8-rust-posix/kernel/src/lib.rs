@@ -41,6 +41,7 @@ pub(crate) mod trap;
 pub(crate) mod uart;
 pub(crate) mod virtio_disk;
 pub(crate) mod vm;
+pub(crate) mod vfs;
 
 pub mod abi;
 

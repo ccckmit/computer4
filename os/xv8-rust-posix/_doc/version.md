@@ -143,17 +143,17 @@
 
 > 虛擬檔案系統抽象層，支援多種 FS 類型。
 
-- [ ] `Filesystem` trait：root()、name()、open()、readdir()…
-- [ ] `MountTable`：路徑前綴 → filesystem 對應
-- [ ] `sys_mount` / `sys_umount`
-- [ ] 原生 FS 封裝為 `sfs` 模組
-- [ ] 新增 `devfs`（/dev/console、/dev/null、/dev/random）
-- [ ] 新增 `procfs`（/proc/self/…）
-- [ ] 新增 `tmpfs`（/tmp）
-- [ ] 根目錄掛載流程重新設計
-- [ ] 裝置編號（dev_t）統一管理
+- [x] `VfsOps` trait：lookup()、read()、write()、readdir()、stat()
+- [x] `MountTable`：路徑前綴 → filesystem 對應（MAX_MOUNTS=8）
+- [x] `sys_mount` / `sys_umount`（syscall 80/81）
+- [x] `ProcFs`（/proc/self/status）實作
+- [x] `DevFs`（/dev/null、/dev/zero）實作
+- [x] 路徑解析整合 VFS（`Path::resolve_inner` 檢查 mount table）
+- [x] `Inode::alloc_vfs()` 動態分配 VFS  inode
+- [x] 使用者空間包裝：`raw::mount`、`raw::umount`
+- [x] `_posix_vfs` 測試（mount/umount/read /proc/self/status）
 
-**交付：** 可 mount procfs、devfs，`_posix_vfs` 測試通過。
+**交付：** 可 mount/unmount procfs/devfs，`_posix_vfs` 測試通過（6 subtests）。15 測試全部綠燈。
 
 ---
 

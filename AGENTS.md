@@ -68,10 +68,11 @@ cd tool/regex4 && rustc regex4.rs -o regex4 && ./regex4
 | `eda/ruspice/` | ruspice | 2021 | SPICE-like 類比電路模擬器 |
 | **os/** | | | |
 | `os/mini-riscv-os/` | mini-riscv-os | 2021 | 最小 RISC-V OS 核心（`#![no_std]` staticlib，QEMU） |
-| `os/rvboard4/` | rvboard4 | 2021 | RISC-V BSP + `os/rvboard4/simulator/` (SDL2 GUI 模擬) |
+| `os/rvboard4/` | rvboard4 | 2021 | RISC-V BSP + `os/rvboard4/simulator/` (SDL2 GUI 類比) |
 | `os/xv6-rust-octopus/` | *workspace* | 2024 | xv6 移植：核心 + 使用者 + mkfs（nightly，QEMU） |
 | `os/xv7-rust-octopus/` | *workspace* | 2024 | xv7 + 網路支援（TAP 設備） |
 | `os/xv8-rust-posix/` | xv8 (kernel) + user | 2021 | POSIX 相容 xv7 進化版（nightly，QEMU）。另有 [AGENTS.md](os/xv8-rust-posix/AGENTS.md) |
+| `os/posix/tools/` | tools | 2021 | **124+ POSIX 工具**（`sh`、`ls`、`diff`、`grep`、`awk` 等）。134 binary targets，214 tests。另有 [_doc/](os/posix/_doc/) 下多版本文件 |
 | **tool/** | | | |
 | `tool/lz4/` | lz4 | 2024 | LZ4 壓縮 |
 | `tool/regex4/` | (standalone) | — | 正規表達式引擎 — `regex4.rs` |
@@ -107,3 +108,17 @@ cd tool/regex4 && rustc regex4.rs -o regex4 && ./regex4
 - [`math4/AGENTS.md`](math4/AGENTS.md) — NaN 處理、多項式升冪順序、R/JS 命名
 - [`database/db6/AGENTS.md`](database/db6/AGENTS.md) — 架構、REPL 指令、引擎 trait
 - [`database/redblacktree/AGENTS.md`](database/redblacktree/AGENTS.md) — CLI 用法、結構
+
+## os/posix/tools/ 說明
+
+此crate包含**124+ POSIX.1-2008工具**，原始碼在 `tools/src/bin/`（134個`.rs`檔），所有binary targets註冊於 `tools/Cargo.toml`。
+
+### 建置與測試
+```sh
+cd os/posix/tools && cargo build && cargo test
+```
+
+### 文件
+- `_doc/plan.md` — 完整專案規劃
+- `_doc/todo2.md` — 剩餘工具狀態
+- `_doc/v0.x.md` — 各版本詳細文件（v0.8 ∼ v0.19）

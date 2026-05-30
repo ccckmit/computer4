@@ -334,6 +334,8 @@ pub enum Syscall {
     GetGid = 66,
     SetUid = 67,
     SetGid = 68,
+    Mount = 80,
+    Umount = 81,
 }
 
 impl TryFrom<usize> for Syscall {
@@ -397,6 +399,8 @@ impl TryFrom<usize> for Syscall {
             66 => Ok(Syscall::GetGid),
             67 => Ok(Syscall::SetUid),
             68 => Ok(Syscall::SetGid),
+            80 => Ok(Syscall::Mount),
+            81 => Ok(Syscall::Umount),
             _ => Err(Errno::ENOSYS),
         }
     }
@@ -470,6 +474,8 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 96] = {
     table[66] = Some(sys_getgid);
     table[67] = Some(sys_setuid);
     table[68] = Some(sys_setgid);
+    table[80] = Some(sys_mount);
+    table[81] = Some(sys_umount);
     table
 };
 

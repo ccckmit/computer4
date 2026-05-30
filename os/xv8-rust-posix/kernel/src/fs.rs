@@ -1,4 +1,5 @@
-use core::fmt::Display;
+use alloc::string::{String, ToString};
+use core::fmt::{Debug, Display};
 use core::ptr;
 use core::slice;
 
@@ -11,6 +12,10 @@ use crate::sleeplock::{SleepLock, SleepLockGuard};
 use crate::spinlock::SpinLock;
 use crate::sync::OnceLock;
 use crate::vm::VA;
+use crate::vfs::VfsOps;
+
+/// Mount-table lookup hook: set by vfs::init() at runtime
+pub static VFS_CHECK_MOUNT: OnceLock<fn(&str) -> Option<(&'static dyn VfsOps, u64)>> = OnceLock::new();
 
 /// File system magic number
 pub const FSMAGIC: u32 = 0x10203040;
@@ -290,7 +295,7 @@ pub mod mode {
 }
 
 /// Cached inode data, protected by sleeplock
-#[derive(Debug)]
+#[derive(Clone, Copy)]
 pub struct InodeInner {
     /// Indicates whether inode has been read from disk
     pub valid: bool,
@@ -306,6 +311,28 @@ pub struct InodeInner {
     pub gid: u32,
     /// File permissions (lower 12 bits of st_mode)
     pub mode: u16,
+    /// VFS operations for virtual nodes (trait object)
+    pub vfs: Option<&'static dyn VfsOps>,
+    /// VFS node ID (interpreter-specific identifier within the mounted FS)
+    pub vfs_id: u64,
+}
+
+impl Debug for InodeInner {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("InodeInner")
+            .field("valid", &self.valid)
+            .field("type", &self.r#type)
+            .field("major", &self.major)
+            .field("minor", &self.minor)
+            .field("nlink", &self.nlink)
+            .field("size", &self.size)
+            .field("addrs", &self.addrs)
+            .field("uid", &self.uid)
+            .field("gid", &self.gid)
+            .field("mode", &self.mode)
+            .field("vfs_id", &self.vfs_id)
+            .finish()
+    }
 }
 
 impl InodeInner {
@@ -322,6 +349,8 @@ impl InodeInner {
             uid: 0,
             gid: 0,
             mode: 0,
+            vfs: None,
+            vfs_id: 0,
         }
     }
 }
@@ -436,6 +465,42 @@ impl Inode {
             inner.valid = false;
 
             Ok(Self { id, dev, inum })
+        } else {
+            err!(FsError::OutOfInode)
+        }
+    }
+
+    /// Allocates a VFS inode (virtual filesystem node, not from disk)
+    pub fn alloc_vfs(vfs: &'static dyn VfsOps, vfs_id: u64, vfs_type: InodeType) -> Result<Self, FsError> {
+        let mut meta = INODE_TABLE.meta.lock();
+
+        let mut empty = None;
+
+        for (id, inode) in meta.iter_mut().enumerate() {
+            if inode.r#ref == 0 {
+                empty = Some(id);
+                break;
+            }
+        }
+
+        if let Some(id) = empty {
+            let inode_meta = &mut meta[id];
+            inode_meta.dev = 0; // VFS device (0)
+            inode_meta.inum = 0; // Not a real disk inode
+            inode_meta.r#ref = 1;
+
+            // Safety: We have exclusive access since ref was 0
+            let inner = unsafe { INODE_TABLE.inner[id].get_mut_unchecked() };
+            inner.valid = true;
+            inner.vfs = Some(vfs);
+            inner.vfs_id = vfs_id;
+            inner.r#type = vfs_type;
+            inner.size = 0;
+            inner.uid = 0;
+            inner.gid = 0;
+            inner.mode = mode::from_type(vfs_type);
+
+            Ok(Self { id, dev: 0, inum: 0 })
         } else {
             err!(FsError::OutOfInode)
         }
@@ -656,6 +721,10 @@ impl Inode {
     }
 
     pub fn stat(&self, inner: &SleepLockGuard<'_, InodeInner>) -> Stat {
+        if let Some(vfs) = inner.vfs {
+            return vfs.stat(inner.vfs_id);
+        }
+
         let blocks = if inner.size == 0 {
             0
         } else {
@@ -690,6 +759,35 @@ impl Inode {
         dst: &mut [u8],
         dst_user: bool,
     ) -> Result<u32, FsError> {
+        // Dispatch to VFS if this is a virtual node
+        if let Some(vfs) = inner.vfs {
+            if dst_user {
+                // For user-space buffers, use a kernel intermediate buffer
+                let mut kbuf = [0u8; 512];
+                let result = vfs.read(inner.vfs_id, offset, &mut kbuf);
+                return match result {
+                    Ok(n) => {
+                        let src = &kbuf[..n as usize];
+                        let dst_va = VA::from(dst.as_mut_ptr() as usize);
+                        if proc::copy_to_user(src, dst_va).is_ok() {
+                            Ok(n)
+                        } else {
+                            Err(FsError::Read)
+                        }
+                    }
+                    Err(Errno::ENOENT) => Err(FsError::Resolve),
+                    Err(Errno::EINVAL) => Err(FsError::Read),
+                    _ => Err(FsError::Read),
+                };
+            } else {
+                return match vfs.read(inner.vfs_id, offset, dst) {
+                    Ok(n) => Ok(n),
+                    Err(Errno::ENOENT) => Err(FsError::Resolve),
+                    _ => Err(FsError::Read),
+                };
+            }
+        }
+
         let mut dst = dst;
         let mut n = dst.len() as u32;
         let mut offset = offset;
@@ -1071,6 +1169,9 @@ impl<'a> Path<'a> {
         let mut name = "";
         let mut path = self.clone();
 
+        // For accumulating path to check mount points
+        let mut accumulated = if self.is_absolute() { "/".to_string() } else { String::new() };
+
         // walk the path, one component at at time
         while let Some((component, rest)) = path.next_component() {
             let mut inner = inode.lock();
@@ -1080,10 +1181,78 @@ impl<'a> Path<'a> {
                 err!(FsError::Resolve);
             }
 
+            // Update accumulated path
+            if !accumulated.is_empty() && !accumulated.ends_with('/') {
+                accumulated.push('/');
+            }
+            accumulated.push_str(component);
+
+            // Check if accumulated path is a mount point - if so, use VFS for all remaining
+            if let Some(check_fn) = VFS_CHECK_MOUNT.get() {
+                if let Some((vfs, root_id)) = check_fn(&accumulated) {
+                    inode.unlock_put(inner);
+
+                    // Use VFS for this component and all remaining
+                    let mut cur_id = root_id;
+                    let mut cur_path = Path::new(component);
+                    cur_path = rest;
+
+                    while let Some((comp, next_rest)) = cur_path.next_component() {
+                        match vfs.lookup(cur_id, comp) {
+                            Ok((next_id, _, _)) => {
+                                cur_id = next_id;
+                                name = comp;
+                                cur_path = next_rest;
+                            }
+                            Err(_) => {
+                                return Err(FsError::Resolve);
+                            }
+                        }
+
+                        if parent && cur_path.is_empty() {
+                            return Ok((try_log!(Inode::alloc_vfs(vfs, cur_id, InodeType::Directory)), name));
+                        }
+                    }
+
+                    let final_inode = try_log!(Inode::alloc_vfs(vfs, cur_id, InodeType::File));
+                    return Ok((final_inode, name));
+                }
+            }
+
             // stop one level early
             if parent && rest.is_empty() {
                 inode.unlock(inner);
                 return Ok((inode, component));
+            }
+
+            // If this inode is backed by VFS, use VFS lookup for all remaining components
+            if let Some(vfs) = inner.vfs {
+                let start_id = inner.vfs_id;
+                inode.unlock(inner);
+
+                let mut cur_id = start_id;
+                let mut cur_path = Path::new(component);
+                cur_path = rest;
+
+                while let Some((comp, next_rest)) = cur_path.next_component() {
+                    match vfs.lookup(cur_id, comp) {
+                        Ok((next_id, _, _)) => {
+                            cur_id = next_id;
+                            name = comp;
+                            cur_path = next_rest;
+                        }
+                        Err(_) => {
+                            return Err(FsError::Resolve);
+                        }
+                    }
+
+                    if parent && cur_path.is_empty() {
+                        return Ok((try_log!(Inode::alloc_vfs(vfs, cur_id, InodeType::Directory)), name));
+                    }
+                }
+
+                let final_inode = try_log!(Inode::alloc_vfs(vfs, cur_id, InodeType::File));
+                return Ok((final_inode, name));
             }
 
             // get the next inode

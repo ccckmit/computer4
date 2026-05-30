@@ -12,6 +12,7 @@ use crate::exec::exec;
 use crate::file::File;
 use crate::fs::{self, Inode, Path};
 use crate::log::Operation;
+use crate::vfs;
 use crate::memlayout::{TRAMPOLINE, TRAPFRAME, kstack};
 use crate::param::{NCPU, NKSTACK_PAGES, NOFILE, NPROC, ROOTDEV};
 use crate::riscv::{PGSIZE, PTE_R, PTE_W, PTE_X, interrupts, registers::tp};
@@ -1126,6 +1127,7 @@ pub unsafe fn fork_ret() {
         // file system initialization must be run in the context of a regular process (because it
         // calls sleep), and thus cannot be run from `main()`.
         fs::init(ROOTDEV);
+        vfs::init();
 
         println!("\nexec init\n");
 
