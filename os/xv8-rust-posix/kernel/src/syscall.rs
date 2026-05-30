@@ -325,8 +325,15 @@ pub enum Syscall {
     GetPpid = 45,
     Nice = 46,
     Access = 48,
+    Chmod = 55,
+    Chown = 56,
+    Umask = 57,
     Fcntl = 60,
     Dup2 = 61,
+    GetUid = 65,
+    GetGid = 66,
+    SetUid = 67,
+    SetGid = 68,
 }
 
 impl TryFrom<usize> for Syscall {
@@ -381,8 +388,15 @@ impl TryFrom<usize> for Syscall {
             45 => Ok(Syscall::GetPpid),
             46 => Ok(Syscall::Nice),
             48 => Ok(Syscall::Access),
+            55 => Ok(Syscall::Chmod),
+            56 => Ok(Syscall::Chown),
+            57 => Ok(Syscall::Umask),
             60 => Ok(Syscall::Fcntl),
             61 => Ok(Syscall::Dup2),
+            65 => Ok(Syscall::GetUid),
+            66 => Ok(Syscall::GetGid),
+            67 => Ok(Syscall::SetUid),
+            68 => Ok(Syscall::SetGid),
             _ => Err(Errno::ENOSYS),
         }
     }
@@ -398,8 +412,8 @@ fn wrap_poweroff(args: &SyscallArgs) -> Result<usize, Errno> {
     sys_poweroff(args)
 }
 
-const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
-    let mut table: [Option<SyscallHandler>; 64] = [None; 64];
+const SYSCALL_TABLE: [Option<SyscallHandler>; 96] = {
+    let mut table: [Option<SyscallHandler>; 96] = [None; 96];
     table[1] = Some(sys_fork);
     table[2] = Some(wrap_exit);
     table[3] = Some(sys_wait);
@@ -447,8 +461,15 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
     table[45] = Some(sys_getppid);
     table[46] = Some(sys_nice);
     table[48] = Some(sys_access);
+    table[55] = Some(sys_chmod);
+    table[56] = Some(sys_chown);
+    table[57] = Some(sys_umask);
     table[60] = Some(sys_fcntl);
     table[61] = Some(sys_dup2);
+    table[65] = Some(sys_getuid);
+    table[66] = Some(sys_getgid);
+    table[67] = Some(sys_setuid);
+    table[68] = Some(sys_setgid);
     table
 };
 

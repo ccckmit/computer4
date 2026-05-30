@@ -357,6 +357,9 @@ impl Ioctl {
     pub const CONSOLE_SET_FG_PID: usize = 2;
 
     pub const SOCKET_GET_PORT: usize = 3;
+
+    pub const TCGETS: usize = 0x5401;
+    pub const TCSETS: usize = 0x5402;
 }
 
 /// Console device major number

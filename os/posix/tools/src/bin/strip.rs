@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -347,6 +347,10 @@ pub struct ProcInner {
     pub sid: usize,
     /// Nice value (-20..19)
     pub nice: i8,
+    /// User ID
+    pub uid: u32,
+    /// Group ID
+    pub gid: u32,
     /// Pending signal bitmask (1-indexed, bit N-1 = signal N)
     pub pending: u32,
     /// Blocked signal bitmask
@@ -364,6 +368,8 @@ impl ProcInner {
             pgid: 0,
             sid: 0,
             nice: 0,
+            uid: 0,
+            gid: 0,
             pending: 0,
             blocked: 0,
         }
@@ -406,6 +412,8 @@ pub struct ProcData {
     pub sig_masks: [u32; NSIG],
     /// memory-mapped regions
     pub mmap_regions: Vec<MmapRegion>,
+    /// File creation mask (umask)
+    pub umask: u16,
 }
 
 impl ProcData {
@@ -423,6 +431,7 @@ impl ProcData {
             sig_flags: [const { 0u32 }; NSIG],
             sig_masks: [const { 0u32 }; NSIG],
             mmap_regions: Vec::new(),
+            umask: 0o022,
         }
     }
 
@@ -861,11 +870,13 @@ pub fn fork() -> Result<Pid, KernelError> {
     // cause fork to return 0 in the child
     new_trapframe.a0 = 0;
 
-    // inherit parent's process group and nice value
+    // inherit parent's process group, nice value, and credentials
     {
         let parent_inner = proc.inner.lock();
         new_inner.pgid = parent_inner.pgid;
         new_inner.nice = parent_inner.nice;
+        new_inner.uid = parent_inner.uid;
+        new_inner.gid = parent_inner.gid;
         drop(parent_inner);
     }
 
@@ -880,6 +891,7 @@ pub fn fork() -> Result<Pid, KernelError> {
     new_data.name = data.name.clone();
 
     new_data.mmap_regions = data.mmap_regions.clone();
+    new_data.umask = data.umask;
 
     let pid = new_inner.pid;
 

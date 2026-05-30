@@ -220,6 +220,13 @@ pub fn sys_open(args: &SyscallArgs) -> Result<usize, Errno> {
                 err!(Errno::from(e))
             }
         };
+        // Set owner and permissions from current process
+        let (proc, data) = current_proc_and_data_mut();
+        let p_inner = proc.inner.lock();
+        inode_inner.uid = p_inner.uid;
+        inode_inner.gid = p_inner.gid;
+        drop(p_inner);
+        inode_inner.mode = crate::fs::mode::from_type(InodeType::File) & !(data.umask as u16);
     } else {
         inode = match log!(path.resolve()) {
             Ok(i) => i,
@@ -290,11 +297,19 @@ pub fn sys_mkdir(args: &SyscallArgs) -> Result<usize, Errno> {
 
     let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
 
-    let (inode, inode_inner) =
+    let (inode, mut inode_inner) =
         match log!(Inode::create(&Path::new(&path), InodeType::Directory, 0, 0)) {
             Ok(i) => i,
             Err(e) => err!(Errno::from(e)),
         };
+
+    // Set owner and permissions from current process
+    let (proc, data) = current_proc_and_data_mut();
+    let p_inner = proc.inner.lock();
+    inode_inner.uid = p_inner.uid;
+    inode_inner.gid = p_inner.gid;
+    drop(p_inner);
+    inode_inner.mode = crate::fs::mode::from_type(InodeType::Directory) & !(data.umask as u16);
 
     inode.unlock_put(inode_inner);
 
@@ -308,7 +323,7 @@ pub fn sys_mknod(args: &SyscallArgs) -> Result<usize, Errno> {
     let minor = args.get_int(2) as u16;
     let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
 
-    let (inode, inner) = match log!(Inode::create(
+    let (inode, mut inner) = match log!(Inode::create(
         &Path::new(&path),
         InodeType::Device,
         major,
@@ -317,6 +332,14 @@ pub fn sys_mknod(args: &SyscallArgs) -> Result<usize, Errno> {
         Ok(i) => i,
         Err(e) => err!(Errno::from(e)),
     };
+
+    // Set owner and permissions from current process
+    let (proc, data) = current_proc_and_data_mut();
+    let p_inner = proc.inner.lock();
+    inner.uid = p_inner.uid;
+    inner.gid = p_inner.gid;
+    drop(p_inner);
+    inner.mode = crate::fs::mode::from_type(InodeType::Device) & !(data.umask as u16);
 
     inode.unlock_put(inner);
 
@@ -743,3 +766,50 @@ pub const F_DUPFD: usize = 0;
 pub const F_GETFD: usize = 1;
 pub const F_SETFD: usize = 2;
 pub const F_GETFL: usize = 3;
+
+pub fn sys_chmod(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let mode = args.get_raw(1) as u16;
+
+    let _op = Operation::begin();
+
+    let inode = match log!(Path::new(&path).resolve()) {
+        Ok(i) => i,
+        Err(_) => err!(Errno::ENOENT),
+    };
+
+    let mut inner = inode.lock();
+    inner.mode = (inner.mode & 0o170000) | (mode & 0o7777) as u16;
+    inode.update(&inner);
+    inode.unlock_put(inner);
+    Ok(0)
+}
+
+pub fn sys_chown(args: &SyscallArgs) -> Result<usize, Errno> {
+    let path = try_log!(args.fetch_string(args.get_addr(0), MAXPATH));
+    let uid = args.get_raw(1) as u32;
+    let gid = args.get_raw(2) as u32;
+
+    let inode = match log!(Path::new(&path).resolve()) {
+        Ok(i) => i,
+        Err(_) => err!(Errno::ENOENT),
+    };
+
+    let mut inner = inode.lock();
+    if uid != u32::MAX {
+        inner.uid = uid;
+    }
+    if gid != u32::MAX {
+        inner.gid = gid;
+    }
+    inode.unlock_put(inner);
+    Ok(0)
+}
+
+pub fn sys_umask(args: &SyscallArgs) -> Result<usize, Errno> {
+    let new_mask = args.get_raw(0) as u16;
+    let (_, data) = current_proc_and_data_mut();
+    let old = data.umask;
+    data.umask = new_mask & 0o777;
+    Ok(old as usize)
+}

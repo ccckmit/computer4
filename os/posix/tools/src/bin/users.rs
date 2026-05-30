@@ -4,7 +4,7 @@ fn main() {
     let mut seen = std::collections::BTreeSet::new();
     if let Ok(file) = std::fs::File::open("/var/run/utmpx") {
         let reader = io::BufReader::new(file);
-        let mut buf = vec![0u8; 384];
+        let _buf = vec![0u8; 384];
         let mut lines = reader.lines();
         while let Some(Ok(line)) = lines.next() {
             if line.len() > 4 {

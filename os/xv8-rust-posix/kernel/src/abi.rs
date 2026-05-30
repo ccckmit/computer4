@@ -25,3 +25,15 @@ pub struct Timespec {
 
 pub const CLOCK_REALTIME: u32 = 0;
 pub const CLOCK_MONOTONIC: u32 = 1;
+
+pub const NCCS: usize = 32;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct Termios {
+    pub c_iflag: u32,
+    pub c_oflag: u32,
+    pub c_cflag: u32,
+    pub c_lflag: u32,
+    pub c_cc: [u8; NCCS],
+}

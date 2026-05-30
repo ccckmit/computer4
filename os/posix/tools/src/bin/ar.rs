@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::{Read, Write};
 
 const ARMAG: &[u8; 8] = b"!<arch>\n";
 const ARFMAG: &[u8; 2] = b"`\n";

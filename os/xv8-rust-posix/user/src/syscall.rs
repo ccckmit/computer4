@@ -1,7 +1,7 @@
 pub mod raw {
     use core::arch::asm;
 
-    use kernel::abi::{Stat, Syscall};
+    use kernel::abi::{Ioctl, Stat, Syscall, Termios};
 
     #[inline(always)]
     fn syscall0(syscall: Syscall) -> isize {
@@ -187,6 +187,14 @@ pub mod raw {
         syscall3(Syscall::Ioctl, fd, cmd, arg)
     }
 
+    pub fn tcgetattr(fd: usize, termios: *mut Termios) -> isize {
+        syscall3(Syscall::Ioctl, fd, Ioctl::TCGETS, termios as usize)
+    }
+
+    pub fn tcsetattr(fd: usize, termios: *const Termios) -> isize {
+        syscall3(Syscall::Ioctl, fd, Ioctl::TCSETS, termios as usize)
+    }
+
     pub fn socket(port: u16) -> isize {
         syscall1(Syscall::Socket, port as usize)
     }
@@ -316,9 +324,37 @@ pub mod raw {
     pub fn nanosleep(req: usize, rem: usize) -> isize {
         syscall2(Syscall::NanoSleep, req, rem)
     }
+
+    pub fn chmod(path: usize, mode: u16) -> isize {
+        syscall2(Syscall::Chmod, path, mode as usize)
+    }
+
+    pub fn chown(path: usize, uid: u32, gid: u32) -> isize {
+        syscall3(Syscall::Chown, path, uid as usize, gid as usize)
+    }
+
+    pub fn umask(mask: u16) -> isize {
+        syscall1(Syscall::Umask, mask as usize)
+    }
+
+    pub fn getuid() -> isize {
+        syscall0(Syscall::GetUid)
+    }
+
+    pub fn getgid() -> isize {
+        syscall0(Syscall::GetGid)
+    }
+
+    pub fn setuid(uid: u32) -> isize {
+        syscall1(Syscall::SetUid, uid as usize)
+    }
+
+    pub fn setgid(gid: u32) -> isize {
+        syscall1(Syscall::SetGid, gid as usize)
+    }
 }
 
-use kernel::abi::{MAXPATH, Stat, Errno, SigAction, Timespec};
+use kernel::abi::{MAXPATH, Stat, Errno, SigAction, Timespec, Termios};
 use kernel::abi::{CLOCK_MONOTONIC, CLOCK_REALTIME};
 
 /// A file descriptor returned by or passed to syscalls.
@@ -690,4 +726,49 @@ pub fn clock_gettime(clock_id: u32, tp: &mut Timespec) -> Result<(), Errno> {
 /// Returns `EINTR` if interrupted by a signal, with remaining time written to `rem`.
 pub fn nanosleep(req: &Timespec, rem: &mut Timespec) -> Result<(), Errno> {
     check_unit(raw::nanosleep(req as *const _ as usize, rem as *mut _ as usize))
+}
+
+/// Changes permissions of a file.
+pub fn chmod(path: &str, mode: u16) -> Result<(), Errno> {
+    check_unit(raw::chmod(path.as_ptr() as usize, mode))
+}
+
+/// Changes owner and group of a file.
+pub fn chown(path: &str, uid: u32, gid: u32) -> Result<(), Errno> {
+    check_unit(raw::chown(path.as_ptr() as usize, uid, gid))
+}
+
+/// Sets the file creation mask and returns the previous mask.
+pub fn umask(mask: u16) -> u16 {
+    raw::umask(mask) as u16
+}
+
+/// Returns the real user ID of the calling process.
+pub fn getuid() -> u32 {
+    raw::getuid() as u32
+}
+
+/// Returns the real group ID of the calling process.
+pub fn getgid() -> u32 {
+    raw::getgid() as u32
+}
+
+/// Sets the user ID of the calling process.
+pub fn setuid(uid: u32) -> Result<(), Errno> {
+    check_unit(raw::setuid(uid))
+}
+
+/// Sets the group ID of the calling process.
+pub fn setgid(gid: u32) -> Result<(), Errno> {
+    check_unit(raw::setgid(gid))
+}
+
+/// Gets terminal attributes for the given fd.
+pub fn tcgetattr(fd: Fd, termios: &mut Termios) -> Result<(), Errno> {
+    check_unit(raw::tcgetattr(fd.as_raw(), termios as *mut Termios))
+}
+
+/// Sets terminal attributes for the given fd.
+pub fn tcsetattr(fd: Fd, termios: &Termios) -> Result<(), Errno> {
+    check_unit(raw::tcsetattr(fd.as_raw(), termios as *const Termios))
 }

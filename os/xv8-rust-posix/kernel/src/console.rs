@@ -1,3 +1,4 @@
+use crate::abi::{NCCS, Termios};
 use crate::file::Ioctl;
 use crate::proc::{self, Channel, PROC_TABLE, Pid};
 use crate::spinlock::SpinLock;
@@ -45,6 +46,8 @@ pub struct Console {
     raw: bool,
     /// pid of process that has the console as its foreground device
     foreground_pid: Option<Pid>,
+    /// termios attributes
+    termios: Termios,
 }
 
 impl Console {
@@ -56,6 +59,13 @@ impl Console {
             e: 0,
             raw: false,
             foreground_pid: None,
+            termios: Termios {
+                c_iflag: 0,
+                c_oflag: 0,
+                c_cflag: 0,
+                c_lflag: 0,
+                c_cc: [0; NCCS],
+            },
         }
     }
 
@@ -236,8 +246,23 @@ impl Console {
     }
 
     pub fn ioctl(cmd: usize, arg: usize) -> Result<usize, Errno> {
+        use core::mem::size_of;
+
         let mut console = CONSOLE.lock();
         match cmd {
+            Ioctl::TCGETS => {
+                let ptr = &console.termios as *const Termios as *const u8;
+                let bytes =
+                    unsafe { core::slice::from_raw_parts(ptr, size_of::<Termios>()) };
+                proc::copy_to_user(bytes, VA::from(arg)).map_err(|_| Errno::EFAULT)?;
+                Ok(0)
+            }
+            Ioctl::TCSETS => {
+                let mut bytes = [0u8; size_of::<Termios>()];
+                proc::copy_from_user(VA::from(arg), &mut bytes).map_err(|_| Errno::EFAULT)?;
+                console.termios = unsafe { core::ptr::read(bytes.as_ptr() as *const Termios) };
+                Ok(0)
+            }
             Ioctl::CONSOLE_SET_RAW => {
                 if arg == 1 {
                     console.raw = true;

@@ -19,7 +19,7 @@ fn main() {
         template
     };
     // Generate unique temp name
-    for attempt in 0..1000 {
+    for _attempt in 0..1000 {
         let suffix: String = (0..6).map(|_| {
             let c = b"abcdefghijklmnopqrstuvwxyz0123456789"[rand() as usize % 36];
             c as char

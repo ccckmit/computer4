@@ -232,5 +232,19 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "_posix_perm"
+path = "testbin/posix_perm.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "_posix_tty"
+path = "testbin/posix_tty.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }

@@ -34,7 +34,7 @@
 
 > 核心信號框架，支援 SIGKILL/SIGTERM/SIGINT 等。
 
-- [x] `ProcInner` 新增信號欄位（`sigactions`、`pending`、`blocked`）
+- [x] `ProcInner` 新增信號欄位（`pending`、`blocked`）
 - [x] 實作 `sys_sigaction`、`sys_sigprocmask`、`sys_sigpending`、`sys_sigsuspend`
 - [x] 實作信號遞送機制：trap 返回前檢查 `pending & ~blocked`
 - [x] `sys_kill` 改為傳送任意信號
@@ -67,56 +67,79 @@
 
 > 核心記憶體管理標準化。
 
-- [ ] `sys_mmap`：MAP_ANONYMOUS + MAP_PRIVATE
-- [ ] `sys_munmap`
-- [ ] `sys_mprotect`
-- [ ] Sv39 頁表權限直接對應 PROT_READ / PROT_WRITE / PROT_EXEC
-- [ ] 檔案映射（MAP_SHARED + fd 參數）— page fault 時從 inode 回填
-- [ ] 使用者堆積改用 mmap，libc `malloc` 基於 mmap
-- [ ] `_posix_mmap` 測試
+- [x] `sys_mmap`：MAP_ANONYMOUS + MAP_PRIVATE
+- [x] `sys_munmap`
+- [x] `sys_mprotect`
+- [x] Sv39 頁表權限直接對應 PROT_READ / PROT_WRITE / PROT_EXEC
+- [x] 檔案映射（MAP_SHARED + fd 參數）— page fault 時從 inode 回填
+- [x] 使用者堆積改用 mmap，libc `malloc` 基於 mmap
+- [x] `_posix_mmap` 測試
 
 **交付：** `_posix_mmap` 測試通過。
 
 ---
 
-## v0.6 — POSIX 行程 + 時間
+## v0.6 — POSIX 行程管理 (Process Management)
 
-> 行程群組、session、優先權、標準時間介面。
+> 行程群組、session、優先權。
 
-- [ ] `sys_setsid`、`sys_getpgid`、`sys_setpgid`、`sys_getppid`
-- [ ] `sys_nice`
-- [ ] `sys_waitpid`（WNOHANG / WUNTRACED）
-- [ ] `sys_clock_gettime`（CLOCK_REALTIME + CLOCK_MONOTONIC）
-- [ ] `sys_clock_settime`
-- [ ] `sys_nanosleep`
-- [ ] `sys_uname`
-- [ ] `sys_getcwd`
-- [ ] 核心內部 `TICKS` 改為 `Timespec`
-- [ ] 使用者測試：`_posix_time`、`_posix_proc`
+- [x] `sys_setsid`、`sys_getpgid`、`sys_getppid`
+- [x] `sys_nice`
+- [x] `ProcInner` 新增 `pgid`、`sid`、`nice` 欄位
+- [x] fork 繼承 pgid 與 nice
+- [x] `_posix_proc` 測試（6 項子測試）
 
-**交付：** `_posix_time` + `_posix_proc` 測試通過。
+**交付：** `_posix_proc` 測試通過。
 
 ---
 
-## v0.7 — 權限 + termios
+## v0.7 — POSIX 時間 (Time)
 
-> 使用者/群組模型、標準終端機控制。
+> clock_gettime / nanosleep，支援高精度時間查詢與休眠。
 
-- [ ] `ProcData` 新增 uid / gid / umask
-- [ ] `sys_getuid`、`sys_geteuid`、`sys_getgid`、`sys_getegid`
-- [ ] `sys_setuid`、`sys_setgid`
-- [ ] `sys_chmod`、`sys_fchmod`、`sys_chown`、`sys_fchown`
-- [ ] `sys_umask`
-- [ ] `sys_tcgetattr`、`sys_tcsetattr`
-- [ ] Termios 完整支援：ICANON、ECHO、ISIG 等
-- [ ] 現有 Console raw/cooked 模式改接 termios 架構
-- [ ] `isatty`、`ttyname`（libc 層）
+- [x] `sys_clock_gettime`（CLOCK_REALTIME + CLOCK_MONOTONIC）
+- [x] `sys_nanosleep`（支援信號中斷回寫剩餘時間）
+- [x] `Timespec` 結構（ABI）
+- [x] `CLOCK_REALTIME` / `CLOCK_MONOTONIC` 常數
+- [x] `_posix_time` 測試（5 項子測試）
 
-**交付：** `_posix_termios` 測試通過。
+**交付：** `_posix_time` 測試通過。
 
 ---
 
-## v0.8 — VFS + 掛載 (Mount)
+## v0.8 — 權限模型 (Permission Model)
+
+> 使用者/群組 ID、檔案權限模式、umask。
+
+- [x] `sys_getuid` / `sys_getgid` / `sys_setuid` / `sys_setgid`
+- [x] `sys_chmod` / `sys_chown` / `sys_umask`
+- [x] `ProcInner` 新增 `uid` / `gid`
+- [x] `ProcData` 新增 `umask`
+- [x] `InodeInner` 新增 `uid` / `gid` / `mode`
+- [x] 新建立檔案繼承行程 uid/gid + `mode & !umask`
+- [x] fork 繼承憑證
+- [x] `_posix_perm` 測試（6 項子測試，含新建檔案 uid/gid 繼承）
+
+**交付：** `_posix_perm` 測試通過。
+
+---
+
+## v0.9 — Termios / M7
+
+> 終端機控制結構，透過 ioctl(TCGETS/TCSETS) 存取。
+
+- [x] `Termios` 結構（ABI，`#[repr(C)]`）
+- [x] `TCGETS=0x5401` / `TCSETS=0x5402` 常數
+- [x] `Console::termios` 欄位
+- [x] `Console::ioctl` TCGETS/TCSETS 處理
+- [x] 使用者包裝層（原始 + 安全）
+- [x] `_posix_tty` 測試（3 項子測試）
+
+**交付：** `_posix_tty` 測試通過。
+
+---
+
+## v0.10 — VFS + 掛載 (Mount)
 
 > 虛擬檔案系統抽象層，支援多種 FS 類型。
 
@@ -173,9 +196,9 @@
 ## 版本時間軸
 
 ```
-v0.1 ─→ v0.2 ─→ v0.3 ─→ v0.4 ─→ v0.5 ─→ v0.6 ─→ v0.7 ─→ v0.8 ─→ v1.0 ─→ v1.1
-基礎     errno    信號     檔案I/O   mmap     行程+時間  權限+     VFS+     穩定版    Socket
-         +編號              擴充                POSIX     termios  掛載               API
+v0.1 ─→ v0.2 ─→ v0.3 ─→ v0.4 ─→ v0.5 ─→ v0.6 ─→ v0.7 ─→ v0.8 ─→ v0.9 ─→ v0.10 ─→ v1.0 ─→ v1.1
+基礎     errno    信號     檔案I/O   mmap     行程     POSIX    權限     Termios   VFS+    穩定版    Socket
+        +編號              擴充               管理      時間     模型      /M7      掛載               API
 ```
 
 ## 附註

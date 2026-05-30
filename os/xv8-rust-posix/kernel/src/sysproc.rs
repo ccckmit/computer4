@@ -524,3 +524,29 @@ pub fn sys_nice(args: &SyscallArgs) -> Result<usize, Errno> {
 
     Ok((new_nice + 20) as usize) // offset by 20 so result is always non-negative
 }
+
+pub fn sys_getuid(_args: &SyscallArgs) -> Result<usize, Errno> {
+    let proc = current_proc();
+    let uid = proc.inner.lock().uid;
+    Ok(uid as usize)
+}
+
+pub fn sys_getgid(_args: &SyscallArgs) -> Result<usize, Errno> {
+    let proc = current_proc();
+    let gid = proc.inner.lock().gid;
+    Ok(gid as usize)
+}
+
+pub fn sys_setuid(args: &SyscallArgs) -> Result<usize, Errno> {
+    let uid = args.get_raw(0) as u32;
+    let proc = current_proc();
+    proc.inner.lock().uid = uid;
+    Ok(0)
+}
+
+pub fn sys_setgid(args: &SyscallArgs) -> Result<usize, Errno> {
+    let gid = args.get_raw(0) as u32;
+    let proc = current_proc();
+    proc.inner.lock().gid = gid;
+    Ok(0)
+}

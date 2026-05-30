@@ -142,7 +142,7 @@ fn main() {
                 's' => cfg.size = true, 'r' => cfg.reverse = true,
                 'R' => cfg.recursive = true, '1' => cfg.single = true,
                 'm' => cfg.comma = true, 'p' => cfg.slash_dir = true,
-                'C' => {} // default column output
+                'C' => {}
                 _ => { eprintln!("ls: invalid option -- '{}'", c); std::process::exit(1); }
             }
         }
@@ -156,97 +156,112 @@ fn main() {
 
     for path_str in &paths {
         let path = Path::new(path_str);
-        let meta = match fs::symlink_metadata(path) {
-            Ok(m) => m, Err(e) => { eprintln!("ls: cannot access '{}': {}", path.display(), e); continue; }
-        };
-
-        if cfg.dir || !meta.is_dir() {
-            let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default().to_string();
-            let name_display = if name.is_empty() { path_str.clone() } else { name };
-            if cfg.long {
-                println!("{}", list_long(path, &name_display, &meta));
-            } else {
-                let mut display = name_display.clone();
-                if cfg.classify {
-                    let c = if meta.is_dir() { '/' } else if meta.permissions().mode() & 0o111 != 0 { '*' } else { ' ' };
-                    if c != ' ' { display.push(c); }
+        match fs::symlink_metadata(path) {
+            Ok(meta) => {
+                if cfg.dir || !meta.is_dir() {
+                    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default().to_string();
+                    let name_display = if name.is_empty() { path_str.clone() } else { name };
+                    if multi && !first { println!(); }
+                    if multi || cfg.recursive {
+                        if !first { println!(); }
+                        println!("{}:", path_str);
+                        first = false;
+                    }
+                    print_entry(&name_display, &meta, Path::new(path_str), &cfg);
+                } else {
+                    list_dir(path, path_str, &cfg, multi, &mut first);
                 }
-                println!("{}", display);
             }
-            continue;
+            Err(e) => { eprintln!("ls: cannot access '{}': {}", path.display(), e); continue; }
         }
+    }
+}
 
-        // List directory contents
-        let entries = match fs::read_dir(path) {
-            Ok(r) => {
-                let mut v: Vec<_> = r.filter_map(|e| e.ok()).collect();
-                v.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
-                if cfg.reverse { v.reverse(); }
-                v
-            }
-            Err(e) => { eprintln!("ls: cannot open directory '{}': {}", path.display(), e); continue; }
-        };
-
-        let mut items: Vec<(Vec<u8>, fs::Metadata, bool)> = Vec::new();
-        for entry in &entries {
-            let name = entry.file_name();
-            if !cfg.all && name.as_encoded_bytes().first() == Some(&b'.') { continue; }
-            if let Ok(meta) = entry.metadata() {
-                let is_dir = meta.is_dir();
-                items.push((name.as_encoded_bytes().to_vec(), meta, is_dir));
-            }
+fn list_dir(path: &Path, display_name: &str, cfg: &Config, multi: bool, first: &mut bool) {
+    let entries = match fs::read_dir(path) {
+        Ok(r) => {
+            let mut v: Vec<_> = r.filter_map(|e| e.ok()).collect();
+            v.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+            if cfg.reverse { v.reverse(); }
+            v
         }
+        Err(e) => { eprintln!("ls: cannot open directory '{}': {}", path.display(), e); return; }
+    };
 
-        if multi || cfg.recursive {
-            if !first { println!(); }
-            println!("{}:", path_str);
-            first = false;
+    let mut items: Vec<(Vec<u8>, fs::Metadata, bool)> = Vec::new();
+    for entry in &entries {
+        let name = entry.file_name();
+        let name_str = name.as_encoded_bytes();
+        if !cfg.all && name_str.first() == Some(&b'.') { continue; }
+        if let Ok(meta) = entry.metadata() {
+            let is_dir = meta.is_dir();
+            items.push((name_str.to_vec(), meta, is_dir));
         }
+    }
 
-        if !cfg.long {
-            // Simple output
-            let names: Vec<String> = items.iter().map(|(name_bytes, meta, is_dir)| {
-                let name = String::from_utf8_lossy(name_bytes).to_string();
-                let mut n = name.clone();
-                if cfg.classify {
-                    let c = if *is_dir { '/' } else if meta.permissions().mode() & 0o111 != 0 { '*' } else { ' ' };
-                    if c != ' ' { n.push(c); }
-                }
-                if cfg.slash_dir && *is_dir { n.push('/'); }
-                n
-            }).collect();
+    let show_header = multi || cfg.recursive;
+    if show_header {
+        if !*first { println!(); }
+        println!("{}:", display_name);
+        *first = false;
+    }
 
-            if cfg.single {
-                for n in &names { println!("{}", n); }
-            } else if cfg.comma {
-                println!("{}", names.join(", "));
-            } else {
-                let max_width = names.iter().map(|n| n.len()).max().unwrap_or(0) + 2;
-                let term_width = 80;
-                let cols = std::cmp::max(1, term_width / max_width.max(1));
-                for (i, n) in names.iter().enumerate() {
-                    print!("{:<width$}", n, width = max_width);
-                    if (i + 1) % cols == 0 { println!(); }
-                }
-                if names.len() % cols != 0 { println!(); }
+    if !cfg.long {
+        let names: Vec<String> = items.iter().map(|(name_bytes, meta, is_dir)| {
+            let name = String::from_utf8_lossy(name_bytes).to_string();
+            let mut n = name.clone();
+            if cfg.classify {
+                let c = if *is_dir { '/' } else if meta.permissions().mode() & 0o111 != 0 { '*' } else { ' ' };
+                if c != ' ' { n.push(c); }
             }
+            if cfg.slash_dir && *is_dir { n.push('/'); }
+            n
+        }).collect();
+
+        if cfg.single {
+            for n in &names { println!("{}", n); }
+        } else if cfg.comma {
+            println!("{}", names.join(", "));
         } else {
-            // Long format
-            let total: u64 = items.iter().map(|(_, m, _)| m.blocks()).sum();
-            println!("total {}", total);
-            for (name_bytes, meta, _) in &items {
-                let name = String::from_utf8_lossy(name_bytes);
-                println!("{}", list_long(path.join(name.as_ref()).as_path(), &name, meta));
+            let max_width = names.iter().map(|n| n.len()).max().unwrap_or(0) + 2;
+            let term_width = 80;
+            let cols = std::cmp::max(1, term_width / max_width.max(1));
+            for (i, n) in names.iter().enumerate() {
+                print!("{:<width$}", n, width = max_width);
+                if (i + 1) % cols == 0 { println!(); }
             }
+            if names.len() % cols != 0 { println!(); }
         }
+    } else {
+        let total: u64 = items.iter().map(|(_, m, _)| m.blocks()).sum();
+        println!("total {}", total);
+        for (name_bytes, meta, _) in &items {
+            let name = String::from_utf8_lossy(name_bytes);
+            println!("{}", list_long(path.join(name.as_ref()).as_path(), &name, meta));
+        }
+    }
 
-        if cfg.recursive {
-            for (name_bytes, _, is_dir) in &items {
-                if *is_dir {
-                    let _name = String::from_utf8_lossy(name_bytes);
-                    // Recurse (would need to handle this properly)
-                }
+    if cfg.recursive {
+        for (name_bytes, _, is_dir) in &items {
+            if *is_dir {
+                let name = String::from_utf8_lossy(name_bytes).to_string();
+                if name == "." || name == ".." { continue; }
+                let sub_path = path.join(&name);
+                list_dir(&sub_path, sub_path.to_string_lossy().as_ref(), cfg, false, first);
             }
         }
+    }
+}
+
+fn print_entry(name: &str, meta: &fs::Metadata, full_path: &Path, cfg: &Config) {
+    if cfg.long {
+        println!("{}", list_long(full_path, name, meta));
+    } else {
+        let mut display = name.to_string();
+        if cfg.classify {
+            let c = if meta.is_dir() { '/' } else if meta.permissions().mode() & 0o111 != 0 { '*' } else { ' ' };
+            if c != ' ' { display.push(c); }
+        }
+        println!("{}", display);
     }
 }

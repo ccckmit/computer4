@@ -57,7 +57,7 @@ fn list_shm() {
 
 fn list_sem() {
     for id in 0..256 {
-        let mut buf: libc::semid_ds = unsafe { std::mem::zeroed() };
+        let _buf: libc::semid_ds = unsafe { std::mem::zeroed() };
         unsafe {
             let ret = libc::semctl(id, 0, libc::IPC_STAT, std::ptr::null_mut::<()>());
             if ret >= 0 {

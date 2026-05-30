@@ -7,11 +7,11 @@ fn main() {
     let mut extern_only = false;
     let mut undefined_only = false;
     let mut sort = false;
-    let mut numeric = false;
+    let numeric = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "-a" | "-g" | "-B" | "-C" | "-D" | "-f" | "-h" | "-l" | "-o" | "-p" | "-r" | "-s" | "-v" => {
+            "-a" | "-B" | "-C" | "-D" | "-f" | "-h" | "-l" | "-o" | "-p" | "-r" | "-s" | "-v" => {
                 i += 1;
             }
             "-c" | "--demangle" => { i += 1; }

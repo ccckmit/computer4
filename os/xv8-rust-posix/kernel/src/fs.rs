@@ -2,6 +2,7 @@ use core::fmt::Display;
 use core::ptr;
 use core::slice;
 
+use crate::abi::Errno;
 use crate::buf::{BCACHE, Buf};
 use crate::log::{self, Operation};
 use crate::param::{NINODE, ROOTDEV};
@@ -299,6 +300,12 @@ pub struct InodeInner {
     pub nlink: u16,
     pub size: u32,
     pub addrs: [u32; NDIRECT + 1],
+    /// Owner user ID
+    pub uid: u32,
+    /// Owner group ID
+    pub gid: u32,
+    /// File permissions (lower 12 bits of st_mode)
+    pub mode: u16,
 }
 
 impl InodeInner {
@@ -312,6 +319,9 @@ impl InodeInner {
             nlink: 0,
             size: 0,
             addrs: [0; NDIRECT + 1],
+            uid: 0,
+            gid: 0,
+            mode: 0,
         }
     }
 }
@@ -405,7 +415,7 @@ impl Inode {
         let mut empty = None;
 
         for (id, inode) in meta.iter_mut().enumerate() {
-            if inode.r#ref > 0 && inode.dev == dev && inode.inum == inum {
+            if inode.dev == dev && inode.inum == inum {
                 inode.r#ref += 1;
                 return Ok(Self { id, dev, inum });
             }
@@ -475,6 +485,9 @@ impl Inode {
             inner.nlink = dinode.nlink;
             inner.size = dinode.size;
             inner.addrs.copy_from_slice(&dinode.addrs);
+            inner.uid = 0;
+            inner.gid = 0;
+            inner.mode = mode::from_type(dinode.r#type);
 
             BCACHE.release(buf);
 
@@ -654,9 +667,9 @@ impl Inode {
             nlink: inner.nlink,
             size: inner.size as u64,
             ino: self.inum,
-            mode: mode::from_type(inner.r#type),
-            uid: 0,
-            gid: 0,
+            mode: inner.mode,
+            uid: inner.uid,
+            gid: inner.gid,
             blksize: BSIZE as u32,
             blocks,
             atim_sec: 0,
