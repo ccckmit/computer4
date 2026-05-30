@@ -211,5 +211,12 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "_posix_mmap"
+path = "testbin/posix_mmap.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }

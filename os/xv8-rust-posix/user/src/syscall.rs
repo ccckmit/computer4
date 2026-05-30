@@ -75,6 +75,24 @@ pub mod raw {
         ret
     }
 
+    #[inline(always)]
+    fn syscall6(syscall: Syscall, a0: usize, a1: usize, a2: usize, a3: usize, a4: usize, a5: usize) -> isize {
+        let ret: isize;
+        unsafe {
+            asm!(
+                "ecall",
+                in("a7") syscall as usize,
+                inlateout("a0") a0 as isize => ret,
+                in("a1") a1,
+                in("a2") a2,
+                in("a3") a3,
+                in("a4") a4,
+                in("a5") a5,
+            );
+        }
+        ret
+    }
+
     pub fn fork() -> isize {
         syscall0(Syscall::Fork)
     }
@@ -261,6 +279,18 @@ pub mod raw {
 
     pub fn dup2(oldfd: usize, newfd: usize) -> isize {
         syscall2(Syscall::Dup2, oldfd, newfd)
+    }
+
+    pub fn mmap(addr: usize, length: usize, prot: usize, flags: usize, fd: usize, offset: usize) -> isize {
+        syscall6(Syscall::Mmap, addr, length, prot, flags, fd, offset)
+    }
+
+    pub fn munmap(addr: usize, length: usize) -> isize {
+        syscall2(Syscall::Munmap, addr, length)
+    }
+
+    pub fn mprotect(addr: usize, length: usize, prot: usize) -> isize {
+        syscall3(Syscall::Mprotect, addr, length, prot)
     }
 }
 
@@ -574,3 +604,32 @@ pub fn fcntl(fd: Fd, cmd: usize, arg: usize) -> Result<usize, Errno> {
 pub fn dup2(oldfd: Fd, newfd: usize) -> Result<usize, Errno> {
     check(raw::dup2(oldfd.as_raw(), newfd))
 }
+
+/// Maps `length` bytes starting at `addr` with the given `prot` and `flags`.
+///
+/// Returns the mapped address on success.
+pub fn mmap(addr: *const u8, length: usize, prot: usize, flags: usize, fd: usize, offset: usize) -> Result<*mut u8, Errno> {
+    check(raw::mmap(addr as usize, length, prot, flags, fd, offset)).map(|a| a as *mut u8)
+}
+
+/// Unmaps `length` bytes starting at `addr`.
+pub fn munmap(addr: *const u8, length: usize) -> Result<(), Errno> {
+    check_unit(raw::munmap(addr as usize, length))
+}
+
+/// Changes protection for `length` bytes starting at `addr`.
+pub fn mprotect(addr: *const u8, length: usize, prot: usize) -> Result<(), Errno> {
+    check_unit(raw::mprotect(addr as usize, length, prot))
+}
+
+// mmap protection flags
+pub const PROT_NONE: usize = 0x0;
+pub const PROT_READ: usize = 0x1;
+pub const PROT_WRITE: usize = 0x2;
+pub const PROT_EXEC: usize = 0x4;
+
+// mmap flags
+pub const MAP_SHARED: usize = 0x01;
+pub const MAP_PRIVATE: usize = 0x02;
+pub const MAP_FIXED: usize = 0x10;
+pub const MAP_ANONYMOUS: usize = 0x20;

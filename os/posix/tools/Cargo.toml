@@ -388,3 +388,89 @@ path = "src/bin/mesg.rs"
 [[bin]]
 name = "write"
 path = "src/bin/write_.rs"
+
+# ─── v0.13: Large Tools ─────────────────────────────────────────────────
+
+[[bin]]
+name = "ed"
+path = "src/bin/ed.rs"
+
+[[bin]]
+name = "awk"
+path = "src/bin/awk.rs"
+
+[[bin]]
+name = "bc"
+path = "src/bin/bc.rs"
+
+[[bin]]
+name = "m4"
+path = "src/bin/m4.rs"
+
+[[bin]]
+name = "pax"
+path = "src/bin/pax.rs"
+
+# ─── v0.14: Infrastructure / Remaining Tools ────────────────────────────
+
+[[bin]]
+name = "who"
+path = "src/bin/who.rs"
+
+[[bin]]
+name = "cal"
+path = "src/bin/cal.rs"
+
+[[bin]]
+name = "csplit"
+path = "src/bin/csplit.rs"
+
+[[bin]]
+name = "getconf"
+path = "src/bin/getconf.rs"
+
+[[bin]]
+name = "iconv"
+path = "src/bin/iconv.rs"
+
+[[bin]]
+name = "compress"
+path = "src/bin/compress.rs"
+
+[[bin]]
+name = "uncompress"
+path = "src/bin/uncompress.rs"
+
+[[bin]]
+name = "zcat"
+path = "src/bin/zcat.rs"
+
+# ─── v0.15: Locale / i18n / Group Tools ───────────────────────────────────
+
+[[bin]]
+name = "locale"
+path = "src/bin/locale.rs"
+
+[[bin]]
+name = "localedef"
+path = "src/bin/localedef.rs"
+
+[[bin]]
+name = "gencat"
+path = "src/bin/gencat.rs"
+
+[[bin]]
+name = "msgfmt"
+path = "src/bin/msgfmt.rs"
+
+[[bin]]
+name = "gettext"
+path = "src/bin/gettext.rs"
+
+[[bin]]
+name = "ngettext"
+path = "src/bin/ngettext.rs"
+
+[[bin]]
+name = "newgrp"
+path = "src/bin/newgrp.rs"

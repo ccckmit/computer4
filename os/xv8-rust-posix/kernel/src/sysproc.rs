@@ -1,7 +1,7 @@
 use alloc::vec;
 
 use crate::memlayout::QEMU_POWER;
-use crate::proc::{self, Channel, Pid, current_proc};
+use crate::proc::{self, Channel, MmapRegion, Pid, current_proc};
 use crate::rng::rand_bytes;
 use crate::signal::{SigAction, NSIG, SIG_BLOCK, SIG_SETMASK, SIG_UNBLOCK};
 use crate::syscall::{Errno, SyscallArgs};
@@ -246,4 +246,142 @@ pub fn sys_poweroff(args: &SyscallArgs) -> ! {
     unsafe { *(QEMU_POWER as *mut u32) = code };
 
     unreachable!("poweroff failed");
+}
+
+pub fn sys_mmap(args: &SyscallArgs) -> Result<usize, Errno> {
+    use crate::riscv::{pg_round_up, PGSIZE, PTE_W, PTE_X};
+
+    let addr = args.get_addr(0);
+    let length = args.get_int(1) as usize;
+    let prot = args.get_raw(2) as usize;
+    let flags = args.get_raw(3) as usize;
+    let fd = args.get_int(4);
+    let _offset = args.get_int(5) as usize;
+
+    const MAP_ANONYMOUS: usize = 0x20;
+
+    if length == 0 || prot == 0 {
+        return Err(Errno::EINVAL);
+    }
+
+    let length = pg_round_up(length);
+
+    if flags & MAP_ANONYMOUS == 0 {
+        return Err(Errno::ENOSYS);
+    }
+
+    let proc = current_proc();
+    let data = unsafe { proc.data_mut() };
+    let cur_size = data.size;
+    let pagetable = data.pagetable_mut();
+
+    let start = if addr == VA::new(0) {
+        pg_round_up(cur_size)
+    } else {
+        if addr % PGSIZE != 0 {
+            return Err(Errno::EINVAL);
+        }
+        addr.as_usize()
+    };
+
+    let xperm = if prot & 0x2 != 0 { PTE_W } else { 0 }
+        | if prot & 0x4 != 0 { PTE_X } else { 0 };
+
+    try_log!(pagetable.alloc(start, start + length, xperm).map_err(|_| Errno::ENOMEM));
+
+    data.mmap_regions.push(MmapRegion {
+        start,
+        len: length,
+        prot,
+        flags,
+    });
+
+    let end = start + length;
+    if end > data.size {
+        data.size = end;
+    }
+
+    Ok(start)
+}
+
+pub fn sys_munmap(args: &SyscallArgs) -> Result<usize, Errno> {
+    use crate::riscv::PGSIZE;
+
+    let addr = args.get_addr(0);
+    let length = args.get_int(1) as usize;
+
+    if addr % PGSIZE != 0 {
+        return Err(Errno::EINVAL);
+    }
+
+    if length == 0 {
+        return Err(Errno::EINVAL);
+    }
+
+    let length = if length % PGSIZE != 0 {
+        (length / PGSIZE + 1) * PGSIZE
+    } else {
+        length
+    };
+
+    let proc = current_proc();
+    let data = unsafe { proc.data_mut() };
+    let addr_val = addr.as_usize();
+    let tl_end = addr_val + length;
+
+    // Remove matching regions before borrowing pagetable
+    data.mmap_regions.retain(|r| {
+        let r_end = r.start + r.len;
+        tl_end <= r.start || r_end <= addr_val
+    });
+
+    let pagetable = data.pagetable_mut();
+    pagetable.unmap(addr, length / PGSIZE, true);
+
+    Ok(0)
+}
+
+pub fn sys_mprotect(args: &SyscallArgs) -> Result<usize, Errno> {
+    use crate::riscv::{pg_round_down, PGSIZE, PTE_U, PTE_R, PTE_W, PTE_X};
+
+    let addr = args.get_addr(0);
+    let length = args.get_int(1) as usize;
+    let prot = args.get_raw(2) as usize;
+
+    let addr_val = pg_round_down(addr.as_usize());
+    if length == 0 {
+        return Err(Errno::EINVAL);
+    }
+    let length = if length % PGSIZE != 0 {
+        (length / PGSIZE + 1) * PGSIZE
+    } else {
+        length
+    };
+
+    let mut perm = PTE_U;
+    if prot & 0x1 != 0 { perm |= PTE_R; }
+    if prot & 0x2 != 0 { perm |= PTE_W; }
+    if prot & 0x4 != 0 { perm |= PTE_X; }
+
+    let proc = current_proc();
+    let data = unsafe { proc.data_mut() };
+
+    for va in (addr_val..addr_val + length).step_by(PGSIZE) {
+        if let Ok(pte) = data.pagetable_mut().0.walk_mut(VA::from(va), false) {
+            if pte.is_v() && pte.is_leaf() {
+                let pa = pte.as_pa();
+                *pte = pa.as_pte() | perm;
+            }
+        }
+    }
+
+    let end = addr_val + length;
+    for r in data.mmap_regions.iter_mut() {
+        let r_end = r.start + r.len;
+        if (addr_val >= r.start && addr_val < r_end) || (r.start >= addr_val && r.start < end) {
+            r.prot = prot;
+        }
+    }
+
+    Ok(0)
 }

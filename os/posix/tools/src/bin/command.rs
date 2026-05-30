@@ -7,11 +7,10 @@ fn main() {
         std::process::exit(1);
     }
     let mut i = 1;
-    let mut skip_fn = false;
     let mut only_external = false;
     while i < args.len() && args[i].starts_with('-') {
         match args[i].as_str() {
-            "-p" => { skip_fn = true; i += 1; }
+            "-p" => { i += 1; }
             "-v" | "-V" => { only_external = true; i += 1; }
             _ => { break; }
         }

@@ -134,7 +134,7 @@ impl PA {
     }
 
     /// Returns the PA as a PageTableEntry.
-    fn as_pte(&self) -> PageTableEntry {
+    pub(crate) fn as_pte(&self) -> PageTableEntry {
         PageTableEntry::from(*self)
     }
 }
@@ -207,11 +207,11 @@ struct Page([u8; 4096]);
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct PageTableEntry(usize);
+pub(crate) struct PageTableEntry(usize);
 
 impl PageTableEntry {
     /// Check if the PTE is valid.
-    fn is_v(&self) -> bool {
+    pub(crate) fn is_v(&self) -> bool {
         *self & PTE_V != 0
     }
 
@@ -235,7 +235,7 @@ impl PageTableEntry {
     }
 
     /// Check if the PTE is a leaf (pointing to a PA).
-    fn is_leaf(&self) -> bool {
+    pub(crate) fn is_leaf(&self) -> bool {
         // If the PTE is a leaf, it should have at least one of the permission bits set.
         *self & (PTE_X | PTE_W | PTE_R) != 0
     }
@@ -246,7 +246,7 @@ impl PageTableEntry {
     }
 
     /// Returns the PA that this PTE points to.
-    fn as_pa(&self) -> PA {
+    pub(crate) fn as_pa(&self) -> PA {
         PA::from(pte_to_pa(self.0))
     }
 }
@@ -389,7 +389,7 @@ impl PageTable {
     ///
     /// Returns an error if any required page-table page doesn't exist and `alloc` is false.
     /// If `alloc` is true, creates any required page-table pages.
-    fn walk_mut(&mut self, va: VA, alloc: bool) -> Result<&mut PageTableEntry, VmError> {
+    pub(crate) fn walk_mut(&mut self, va: VA, alloc: bool) -> Result<&mut PageTableEntry, VmError> {
         unsafe { Self::walk_raw(self.ptr, va, alloc).map(|p| &mut *p) }
     }
 

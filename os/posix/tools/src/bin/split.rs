@@ -6,7 +6,7 @@ fn main() {
     let mut prefix = "x".to_string();
     let mut suffix_len = 2;
     let mut lines_per_file = 1000;
-    let mut numeric = false;
+    let _numeric = false;
 
     while i < args.len() && args[i].starts_with('-') {
         match args[i].as_str() {

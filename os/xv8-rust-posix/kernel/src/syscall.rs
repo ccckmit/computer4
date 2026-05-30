@@ -311,11 +311,14 @@ pub enum Syscall {
     Getdents = 31,
     Symlink = 32,
     Readlink = 33,
-    Access = 34,
+    Mmap = 34,
+    Munmap = 35,
+    Mprotect = 36,
     Sigaction = 37,
     Sigprocmask = 38,
     Sigpending = 39,
     Sigsuspend = 40,
+    Access = 48,
     Fcntl = 60,
     Dup2 = 61,
 }
@@ -358,11 +361,14 @@ impl TryFrom<usize> for Syscall {
             31 => Ok(Syscall::Getdents),
             32 => Ok(Syscall::Symlink),
             33 => Ok(Syscall::Readlink),
-            34 => Ok(Syscall::Access),
+            34 => Ok(Syscall::Mmap),
+            35 => Ok(Syscall::Munmap),
+            36 => Ok(Syscall::Mprotect),
             37 => Ok(Syscall::Sigaction),
             38 => Ok(Syscall::Sigprocmask),
             39 => Ok(Syscall::Sigpending),
             40 => Ok(Syscall::Sigsuspend),
+            48 => Ok(Syscall::Access),
             60 => Ok(Syscall::Fcntl),
             61 => Ok(Syscall::Dup2),
             _ => Err(Errno::ENOSYS),
@@ -415,11 +421,14 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
     table[31] = Some(sys_getdents);
     table[32] = Some(sys_symlink);
     table[33] = Some(sys_readlink);
-    table[34] = Some(sys_access);
+    table[34] = Some(sys_mmap);
+    table[35] = Some(sys_munmap);
+    table[36] = Some(sys_mprotect);
     table[37] = Some(sys_sigaction);
     table[38] = Some(sys_sigprocmask);
     table[39] = Some(sys_sigpending);
     table[40] = Some(sys_sigsuspend);
+    table[48] = Some(sys_access);
     table[60] = Some(sys_fcntl);
     table[61] = Some(sys_dup2);
     table

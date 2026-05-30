@@ -5,6 +5,7 @@ use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use alloc::boxed::Box;
 use alloc::string::String;
+use alloc::vec::Vec;
 
 use crate::error::KernelError;
 use crate::exec::exec;
@@ -360,6 +361,15 @@ impl ProcInner {
     }
 }
 
+/// Describes a memory-mapped region (mmap)
+#[derive(Debug, Clone, Copy)]
+pub struct MmapRegion {
+    pub start: usize,
+    pub len: usize,
+    pub prot: usize,
+    pub flags: usize,
+}
+
 /// Private fields for Proc
 #[derive(Debug)]
 pub struct ProcData {
@@ -385,6 +395,8 @@ pub struct ProcData {
     pub sig_flags: [u32; NSIG],
     /// sigaction mask per signal
     pub sig_masks: [u32; NSIG],
+    /// memory-mapped regions
+    pub mmap_regions: Vec<MmapRegion>,
 }
 
 impl ProcData {
@@ -401,6 +413,7 @@ impl ProcData {
             sig_handlers: [const { 0usize }; NSIG],
             sig_flags: [const { 0u32 }; NSIG],
             sig_masks: [const { 0u32 }; NSIG],
+            mmap_regions: Vec::new(),
         }
     }
 
@@ -846,6 +859,8 @@ pub fn fork() -> Result<Pid, KernelError> {
     new_data.cwd = data.cwd.dup();
 
     new_data.name = data.name.clone();
+
+    new_data.mmap_regions = data.mmap_regions.clone();
 
     let pid = new_inner.pid;
 
