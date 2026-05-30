@@ -292,6 +292,22 @@ pub mod raw {
     pub fn mprotect(addr: usize, length: usize, prot: usize) -> isize {
         syscall3(Syscall::Mprotect, addr, length, prot)
     }
+
+    pub fn setsid() -> isize {
+        syscall0(Syscall::SetSid)
+    }
+
+    pub fn getpgid(pid: usize) -> isize {
+        syscall1(Syscall::GetPgid, pid)
+    }
+
+    pub fn getppid() -> isize {
+        syscall0(Syscall::GetPpid)
+    }
+
+    pub fn nice(inc: usize) -> isize {
+        syscall1(Syscall::Nice, inc)
+    }
 }
 
 use kernel::abi::{MAXPATH, Stat, Errno, SigAction};
@@ -633,3 +649,25 @@ pub const MAP_SHARED: usize = 0x01;
 pub const MAP_PRIVATE: usize = 0x02;
 pub const MAP_FIXED: usize = 0x10;
 pub const MAP_ANONYMOUS: usize = 0x20;
+
+/// Creates a new session. The calling process becomes the session leader.
+pub fn setsid() -> Result<usize, Errno> {
+    check(raw::setsid())
+}
+
+/// Returns the process group ID of the process with the given PID.
+/// If `pid` is 0, returns the calling process's PGID.
+pub fn getpgid(pid: usize) -> Result<usize, Errno> {
+    check(raw::getpgid(pid))
+}
+
+/// Returns the parent process ID of the calling process.
+pub fn getppid() -> Result<usize, Errno> {
+    check(raw::getppid())
+}
+
+/// Changes the nice value of the calling process by `inc`.
+/// Returns the new nice value.
+pub fn nice(inc: isize) -> Result<isize, Errno> {
+    check(raw::nice(inc as usize)).map(|v| v as isize)
+}

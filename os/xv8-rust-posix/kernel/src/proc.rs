@@ -341,6 +341,12 @@ pub struct ProcInner {
     pub xstate: isize,
     /// Process ID
     pub pid: Pid,
+    /// Process group ID
+    pub pgid: usize,
+    /// Session ID
+    pub sid: usize,
+    /// Nice value (-20..19)
+    pub nice: i8,
     /// Pending signal bitmask (1-indexed, bit N-1 = signal N)
     pub pending: u32,
     /// Blocked signal bitmask
@@ -355,6 +361,9 @@ impl ProcInner {
             killed: false,
             xstate: 0,
             pid: Pid(0),
+            pgid: 0,
+            sid: 0,
+            nice: 0,
             pending: 0,
             blocked: 0,
         }
@@ -682,6 +691,8 @@ impl ProcTable {
 
             if inner.state == ProcState::Unused {
                 inner.pid = Pid::alloc();
+                inner.pgid = *inner.pid;
+                inner.sid = 0;
                 inner.state = ProcState::Used;
 
                 let data = unsafe { proc.data_mut() };
@@ -849,6 +860,14 @@ pub fn fork() -> Result<Pid, KernelError> {
 
     // cause fork to return 0 in the child
     new_trapframe.a0 = 0;
+
+    // inherit parent's process group and nice value
+    {
+        let parent_inner = proc.inner.lock();
+        new_inner.pgid = parent_inner.pgid;
+        new_inner.nice = parent_inner.nice;
+        drop(parent_inner);
+    }
 
     // increment reference counts on open file descriptors
     for (i, file) in data.open_files.iter_mut().enumerate() {

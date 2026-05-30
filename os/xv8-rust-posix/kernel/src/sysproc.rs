@@ -385,3 +385,61 @@ pub fn sys_mprotect(args: &SyscallArgs) -> Result<usize, Errno> {
 
     Ok(0)
 }
+
+pub fn sys_setsid(args: &SyscallArgs) -> Result<usize, Errno> {
+    let proc = args.proc();
+    let mut inner = proc.inner.lock();
+
+    if inner.sid == *inner.pid || inner.pgid == *inner.pid {
+        return Err(Errno::EPERM);
+    }
+
+    inner.pgid = *inner.pid;
+    inner.sid = *inner.pid;
+
+    Ok(*inner.pid)
+}
+
+pub fn sys_getpgid(args: &SyscallArgs) -> Result<usize, Errno> {
+    let pid_arg = args.get_int(0);
+
+    let pid = if pid_arg == 0 {
+        let proc = args.proc();
+        *proc.inner.lock().pid
+    } else {
+        pid_arg as usize
+    };
+
+    for proc in crate::proc::PROC_TABLE.iter() {
+        let inner = proc.inner.lock();
+        if inner.state != crate::proc::ProcState::Unused && *inner.pid == pid {
+            return Ok(inner.pgid);
+        }
+    }
+
+    Err(Errno::ESRCH)
+}
+
+pub fn sys_getppid(args: &SyscallArgs) -> Result<usize, Errno> {
+    let proc = args.proc();
+    let parents = crate::proc::PROC_TABLE.parents.lock();
+    if let Some(parent_id) = parents[proc.id] {
+        let parent = crate::proc::PROC_TABLE.get(parent_id);
+        let parent_pid = *parent.inner.lock().pid;
+        Ok(parent_pid)
+    } else {
+        Ok(0)
+    }
+}
+
+pub fn sys_nice(args: &SyscallArgs) -> Result<usize, Errno> {
+    let inc = args.get_int(0) as i8;
+
+    let proc = args.proc();
+    let mut inner = proc.inner.lock();
+
+    let new_nice = (inner.nice as i16 + inc as i16).max(-20).min(19);
+    inner.nice = new_nice as i8;
+
+    Ok(new_nice as usize)
+}
