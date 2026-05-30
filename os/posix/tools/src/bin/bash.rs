@@ -53,6 +53,7 @@ impl Lexer {
                     return Some("${".into());
                 }
                 let mut v = String::new();
+                v.push('$');
                 while let Some(ch) = self.peek() {
                     if ch.is_alphanumeric() || ch == '_' { v.push(ch); self.advance(); }
                     else { break; }
@@ -143,6 +144,7 @@ fn expand_vars(s: &str, g: &HashMap<String, String>) -> String {
                 }
                 let out = Command::new("sh").arg("-c").arg(format!("echo $(( {} ))", expr.trim())).output();
                 r.push_str(&String::from_utf8_lossy(&out.ok().map(|o| o.stdout).unwrap_or_default()).trim().to_string());
+                i += 1;
                 continue;
             }
 
