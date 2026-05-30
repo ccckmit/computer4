@@ -393,5 +393,131 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "nohup"
+path = "bin/nohup.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "stat"
+path = "bin/stat.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "id"
+path = "bin/id.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "uname"
+path = "bin/uname.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "pwd"
+path = "bin/pwd.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "whoami"
+path = "bin/whoami.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "link"
+path = "bin/link.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "unlink"
+path = "bin/unlink.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "tee"
+path = "bin/tee.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "nice"
+path = "bin/nice.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "grep"
+path = "bin/grep.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "sed"
+path = "bin/sed.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "awk"
+path = "bin/awk.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "find"
+path = "bin/find.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "xargs"
+path = "bin/xargs.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "file"
+path = "bin/file.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "dd"
+path = "bin/dd.rs"
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "install"
+path = "bin/install.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }
