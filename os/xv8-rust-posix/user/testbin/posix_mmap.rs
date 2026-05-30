@@ -117,5 +117,4 @@ fn main(_args: Args) {
     println!("  test_mmap_large ... ok");
 
     println!("\nall mmap tests passed");
-    poweroff(0);
 }

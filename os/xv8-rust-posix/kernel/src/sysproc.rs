@@ -1,5 +1,8 @@
+use core::mem::size_of;
+
 use alloc::vec;
 
+use crate::abi::{CLOCK_MONOTONIC, CLOCK_REALTIME, Timespec};
 use crate::memlayout::QEMU_POWER;
 use crate::proc::{self, Channel, MmapRegion, Pid, current_proc};
 use crate::rng::rand_bytes;
@@ -7,6 +10,10 @@ use crate::signal::{SigAction, NSIG, SIG_BLOCK, SIG_SETMASK, SIG_UNBLOCK};
 use crate::syscall::{Errno, SyscallArgs};
 use crate::trap::TICKS;
 use crate::vm::VA;
+
+/// Each tick = 100 ms = 100_000_000 ns
+const NSEC_PER_TICK: i64 = 100_000_000;
+const NSEC_PER_SEC: i64 = 1_000_000_000;
 
 pub fn sys_exit(args: &SyscallArgs) -> ! {
     let n = args.get_int(0);
@@ -16,6 +23,80 @@ pub fn sys_exit(args: &SyscallArgs) -> ! {
 pub fn sys_getpid(args: &SyscallArgs) -> Result<usize, Errno> {
     let pid = args.proc().inner.lock().pid;
     Ok(*pid)
+}
+
+pub fn sys_clock_gettime(args: &SyscallArgs) -> Result<usize, Errno> {
+    let clock_id = args.get_raw(0) as u32;
+    let tp_addr = args.get_addr(1);
+
+    let ticks = *TICKS.lock();
+
+    let total_ns = ticks as i64 * NSEC_PER_TICK;
+    let ts = match clock_id {
+        CLOCK_REALTIME | CLOCK_MONOTONIC => Timespec {
+            tv_sec: total_ns / NSEC_PER_SEC,
+            tv_nsec: total_ns % NSEC_PER_SEC,
+        },
+        _ => return Err(Errno::EINVAL),
+    };
+
+    let src = unsafe {
+        core::slice::from_raw_parts(&ts as *const _ as *const u8, size_of::<Timespec>())
+    };
+    if log!(proc::copy_to_user(src, tp_addr)).is_err() {
+        return Err(Errno::EFAULT);
+    }
+
+    Ok(0)
+}
+
+pub fn sys_nanosleep(args: &SyscallArgs) -> Result<usize, Errno> {
+    let req_addr = args.get_addr(0);
+
+    let mut req = Timespec { tv_sec: 0, tv_nsec: 0 };
+    let req_slice = unsafe {
+        core::slice::from_raw_parts_mut(&mut req as *mut _ as *mut u8, size_of::<Timespec>())
+    };
+    if log!(proc::copy_from_user(req_addr, req_slice)).is_err() {
+        return Err(Errno::EFAULT);
+    }
+
+    if req.tv_sec < 0 || req.tv_nsec < 0 || req.tv_nsec >= NSEC_PER_SEC {
+        return Err(Errno::EINVAL);
+    }
+
+    let total_ns = req.tv_sec * NSEC_PER_SEC + req.tv_nsec;
+    let duration_ticks = (total_ns / NSEC_PER_TICK) as usize;
+
+    let mut ticks = TICKS.lock();
+    let ticks0 = *ticks;
+
+    while *ticks - ticks0 < duration_ticks {
+        if current_proc().is_killed() {
+            ticks = proc::sleep(Channel::Ticks, ticks);
+            // Re-check remaining time
+            let elapsed = *ticks - ticks0;
+            if elapsed < duration_ticks {
+                let remaining_ns = (duration_ticks - elapsed) as i64 * NSEC_PER_TICK;
+                let rem = Timespec {
+                    tv_sec: remaining_ns / NSEC_PER_SEC,
+                    tv_nsec: remaining_ns % NSEC_PER_SEC,
+                };
+                let rem_addr = args.get_addr(1);
+                if rem_addr != 0 {
+                    let rem_src = unsafe {
+                        core::slice::from_raw_parts(&rem as *const _ as *const u8, size_of::<Timespec>())
+                    };
+                    let _ = proc::copy_to_user(rem_src, rem_addr);
+                }
+            }
+            return Err(Errno::EINTR);
+        }
+
+        ticks = proc::sleep(Channel::Ticks, ticks);
+    }
+
+    Ok(0)
 }
 
 pub fn sys_fork(_args: &SyscallArgs) -> Result<usize, Errno> {
@@ -441,5 +522,5 @@ pub fn sys_nice(args: &SyscallArgs) -> Result<usize, Errno> {
     let new_nice = (inner.nice as i16 + inc as i16).max(-20).min(19);
     inner.nice = new_nice as i8;
 
-    Ok(new_nice as usize)
+    Ok((new_nice + 20) as usize) // offset by 20 so result is always non-negative
 }

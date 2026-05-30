@@ -1723,3 +1723,170 @@ fn test_newgrp_unknown() {
         .output().unwrap();
     assert!(!out.status.success());
 }
+
+// ─── v0.16: Simple Tools ────────────────────────────────────────────────
+
+#[test]
+fn test_users_runs() {
+    let out = Command::new(tool_path("users")).output().unwrap();
+    // Just verify it runs; may be empty in CI
+    assert!(out.status.success());
+}
+
+#[test]
+fn test_sum_default() {
+    let d = tmpdir("sum_default");
+    let f = format!("{}/test.txt", d);
+    fs::write(&f, b"hello\n").unwrap();
+    let out = Command::new(tool_path("sum")).arg(&f).output().unwrap();
+    assert!(out.status.success(), "stdout: {:?}", String::from_utf8_lossy(&out.stdout));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("test.txt"), "expected test.txt in output, got: {}", s);
+}
+
+#[test]
+fn test_sum_bsd() {
+    let d = tmpdir("sum_bsd");
+    let f = format!("{}/test.txt", d);
+    fs::write(&f, b"abc").unwrap();
+    let out = Command::new(tool_path("sum")).arg("-r").arg(&f).output().unwrap();
+    assert!(out.status.success(), "stdout: {:?}", String::from_utf8_lossy(&out.stdout));
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("test.txt"), "expected test.txt in output, got: {}", s);
+}
+
+#[test]
+fn test_mktemp_file() {
+    let out = Command::new(tool_path("mktemp")).output().unwrap();
+    assert!(out.status.success());
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(path.starts_with("/tmp/"));
+    assert!(std::path::Path::new(&path).exists());
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn test_mktemp_dir() {
+    let out = Command::new(tool_path("mktemp")).arg("-d").output().unwrap();
+    assert!(out.status.success());
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(path.starts_with("/tmp/"));
+    assert!(std::path::Path::new(&path).is_dir());
+    let _ = std::fs::remove_dir(&path);
+}
+
+#[test]
+fn test_mktemp_template() {
+    let out = Command::new(tool_path("mktemp")).arg("foo.XXXXXX").output().unwrap();
+    assert!(out.status.success());
+    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(path.starts_with("/tmp/foo"));
+}
+
+#[test]
+fn test_c99_not_found() {
+    // Should exit 127 if cc not in PATH, otherwise run
+    let out = Command::new(tool_path("c99")).arg("--version").output().unwrap();
+    // Either succeeds (cc found) or exits 127
+    if !out.status.success() {
+        assert_eq!(out.status.code().unwrap_or(0), 127);
+    }
+}
+
+#[test]
+fn test_fort77_not_found() {
+    let out = Command::new(tool_path("fort77")).output().unwrap();
+    if !out.status.success() {
+        assert_eq!(out.status.code().unwrap_or(0), 127);
+    }
+}
+
+#[test]
+fn test_lex_not_found() {
+    let out = Command::new(tool_path("lex")).output().unwrap();
+    if !out.status.success() {
+        assert_eq!(out.status.code().unwrap_or(0), 127);
+    }
+}
+
+#[test]
+fn test_yacc_not_found() {
+    let out = Command::new(tool_path("yacc")).output().unwrap();
+    if !out.status.success() {
+        assert_eq!(out.status.code().unwrap_or(0), 127);
+    }
+}
+
+// ─── v0.16: ar ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_ar_create_and_list() {
+    let d = tmpdir("ar_test");
+    let f = format!("{}/test.txt", d);
+    let archive = format!("{}/test.a", d);
+    fs::write(&f, b"hello world").unwrap();
+    let out = Command::new(tool_path("ar"))
+        .arg("-rc").arg(&archive).arg(&f)
+        .output().unwrap();
+    assert!(out.status.success());
+    assert!(std::path::Path::new(&archive).exists());
+    let out2 = Command::new(tool_path("ar"))
+        .arg("-t").arg(&archive)
+        .output().unwrap();
+    assert!(out2.status.success());
+    let s = String::from_utf8_lossy(&out2.stdout);
+    assert!(s.contains("test.txt"));
+}
+
+#[test]
+fn test_ar_extract() {
+    let d = tmpdir("ar_extract");
+    let f = format!("{}/data.txt", d);
+    let archive = format!("{}/lib.a", d);
+    fs::write(&f, b"extract me").unwrap();
+    Command::new(tool_path("ar")).arg("-rc").arg(&archive).arg(&f)
+        .output().unwrap();
+    // Remove original file, then extract it back
+    fs::remove_file(&f).unwrap();
+    let out = Command::new(tool_path("ar")).arg("-x").arg(&archive)
+        .output().unwrap();
+    assert!(out.status.success(), "extract failed: {:?}", String::from_utf8_lossy(&out.stderr));
+    assert!(std::path::Path::new(&f).exists(), "data.txt not found after extraction");
+    let content = fs::read_to_string(&f).unwrap();
+    assert_eq!(content, "extract me");
+}
+
+// ─── v0.16: ipcrm / ipcs ───────────────────────────────────────────────
+
+#[test]
+fn test_ipcrm_usage() {
+    let out = Command::new(tool_path("ipcrm")).output().unwrap();
+    assert!(!out.status.success());
+}
+
+#[test]
+fn test_ipcs_runs() {
+    let out = Command::new(tool_path("ipcs")).output().unwrap();
+    // May fail on systems without IPC, but should at least run
+    assert!(out.status.success());
+}
+
+// ─── v0.16: strip / nm ──────────────────────────────────────────────────
+
+#[test]
+fn test_strip_bad_file() {
+    let d = tmpdir("strip_test");
+    let f = format!("{}/not_elf.txt", d);
+    fs::write(&f, b"not an elf file").unwrap();
+    let out = Command::new(tool_path("strip")).arg(&f).output().unwrap();
+    assert!(!out.status.success());
+}
+
+#[test]
+fn test_nm_bad_file() {
+    let d = tmpdir("nm_test");
+    let f = format!("{}/not_elf.txt", d);
+    fs::write(&f, b"not an elf file").unwrap();
+    let out = Command::new(tool_path("nm")).arg(&f).output().unwrap();
+    assert!(!out.status.success());
+}

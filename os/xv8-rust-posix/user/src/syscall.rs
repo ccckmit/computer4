@@ -305,12 +305,21 @@ pub mod raw {
         syscall0(Syscall::GetPpid)
     }
 
-    pub fn nice(inc: usize) -> isize {
-        syscall1(Syscall::Nice, inc)
+    pub fn nice(inc: isize) -> isize {
+        syscall1(Syscall::Nice, inc as usize)
+    }
+
+    pub fn clock_gettime(clock_id: u32, tp: usize) -> isize {
+        syscall2(Syscall::ClockGetTime, clock_id as usize, tp)
+    }
+
+    pub fn nanosleep(req: usize, rem: usize) -> isize {
+        syscall2(Syscall::NanoSleep, req, rem)
     }
 }
 
-use kernel::abi::{MAXPATH, Stat, Errno, SigAction};
+use kernel::abi::{MAXPATH, Stat, Errno, SigAction, Timespec};
+use kernel::abi::{CLOCK_MONOTONIC, CLOCK_REALTIME};
 
 /// A file descriptor returned by or passed to syscalls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -669,5 +678,16 @@ pub fn getppid() -> Result<usize, Errno> {
 /// Changes the nice value of the calling process by `inc`.
 /// Returns the new nice value.
 pub fn nice(inc: isize) -> Result<isize, Errno> {
-    check(raw::nice(inc as usize)).map(|v| v as isize)
+    check(raw::nice(inc)).map(|v| (v as isize) - 20)
+}
+
+/// Gets the time of the given clock.
+pub fn clock_gettime(clock_id: u32, tp: &mut Timespec) -> Result<(), Errno> {
+    check_unit(raw::clock_gettime(clock_id, tp as *mut _ as usize))
+}
+
+/// Sleeps with nanosecond precision.
+/// Returns `EINTR` if interrupted by a signal, with remaining time written to `rem`.
+pub fn nanosleep(req: &Timespec, rem: &mut Timespec) -> Result<(), Errno> {
+    check_unit(raw::nanosleep(req as *const _ as usize, rem as *mut _ as usize))
 }

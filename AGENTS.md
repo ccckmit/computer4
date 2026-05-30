@@ -71,6 +71,7 @@ cd tool/regex4 && rustc regex4.rs -o regex4 && ./regex4
 | `os/rvboard4/` | rvboard4 | 2021 | RISC-V BSP + `os/rvboard4/simulator/` (SDL2 GUI 模擬) |
 | `os/xv6-rust-octopus/` | *workspace* | 2024 | xv6 移植：核心 + 使用者 + mkfs（nightly，QEMU） |
 | `os/xv7-rust-octopus/` | *workspace* | 2024 | xv7 + 網路支援（TAP 設備） |
+| `os/xv8-rust-posix/` | xv8 (kernel) + user | 2021 | POSIX 相容 xv7 進化版（nightly，QEMU）。另有 [AGENTS.md](os/xv8-rust-posix/AGENTS.md) |
 | **tool/** | | | |
 | `tool/lz4/` | lz4 | 2024 | LZ4 壓縮 |
 | `tool/regex4/` | (standalone) | — | 正規表達式引擎 — `regex4.rs` |

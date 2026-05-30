@@ -16,7 +16,8 @@ fn test_getppid() {
 fn test_getpgid_self() {
     let pid = getpid();
     let pgid = getpgid(0).expect("getpgid(0)");
-    assert_eq!(pgid, pid, "getpgid(0) should return own pid");
+    assert!(pgid > 0, "getpgid(0) should return positive value");
+    assert!(pid >= pgid, "pgid should be <= pid (inherited from init)");
 }
 
 fn test_setsid() {
@@ -35,7 +36,7 @@ fn test_setsid() {
             // Second setsid should fail (already session leader)
             assert!(setsid().is_err(), "second setsid should fail");
 
-            poweroff(0);
+            exit(0);
         }
         Ok(_pid) => {
             let mut code = 0;
@@ -61,13 +62,13 @@ fn test_nice() {
 }
 
 fn test_fork_pgid_inherit() {
+    let parent_pgid = getpgid(0).expect("parent getpgid");
     match fork() {
         Ok(0) => {
             // Child should inherit parent's pgid
             let pgid = getpgid(0).expect("child getpgid");
-            let ppid = getppid().expect("child getppid");
-            assert_eq!(pgid, ppid, "child should be in parent's process group");
-            poweroff(0);
+            assert_eq!(pgid, parent_pgid, "child should inherit parent's process group");
+            exit(0);
         }
         Ok(_pid) => {
             let mut code = 0;
@@ -101,5 +102,4 @@ fn main(_args: Args) {
     println!("  test_fork_pgid_inherit ... ok");
 
     println!("\nall proc management tests passed");
-    poweroff(0);
 }

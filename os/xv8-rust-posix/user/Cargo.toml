@@ -225,5 +225,12 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "_posix_time"
+path = "testbin/posix_time.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }

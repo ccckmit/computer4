@@ -318,11 +318,13 @@ pub enum Syscall {
     Sigprocmask = 38,
     Sigpending = 39,
     Sigsuspend = 40,
-    Access = 48,
+    ClockGetTime = 41,
+    NanoSleep = 42,
     SetSid = 43,
     GetPgid = 44,
     GetPpid = 45,
     Nice = 46,
+    Access = 48,
     Fcntl = 60,
     Dup2 = 61,
 }
@@ -372,6 +374,8 @@ impl TryFrom<usize> for Syscall {
             38 => Ok(Syscall::Sigprocmask),
             39 => Ok(Syscall::Sigpending),
             40 => Ok(Syscall::Sigsuspend),
+            41 => Ok(Syscall::ClockGetTime),
+            42 => Ok(Syscall::NanoSleep),
             43 => Ok(Syscall::SetSid),
             44 => Ok(Syscall::GetPgid),
             45 => Ok(Syscall::GetPpid),
@@ -436,6 +440,8 @@ const SYSCALL_TABLE: [Option<SyscallHandler>; 64] = {
     table[38] = Some(sys_sigprocmask);
     table[39] = Some(sys_sigpending);
     table[40] = Some(sys_sigsuspend);
+    table[41] = Some(sys_clock_gettime);
+    table[42] = Some(sys_nanosleep);
     table[43] = Some(sys_setsid);
     table[44] = Some(sys_getpgid);
     table[45] = Some(sys_getppid);

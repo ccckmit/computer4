@@ -474,3 +474,53 @@ path = "src/bin/ngettext.rs"
 [[bin]]
 name = "newgrp"
 path = "src/bin/newgrp.rs"
+
+# ─── v0.16: Wrappers / IPC / ELF Tools ───────────────────────────────────
+
+[[bin]]
+name = "users"
+path = "src/bin/users.rs"
+
+[[bin]]
+name = "sum"
+path = "src/bin/sum.rs"
+
+[[bin]]
+name = "mktemp"
+path = "src/bin/mktemp.rs"
+
+[[bin]]
+name = "c99"
+path = "src/bin/c99.rs"
+
+[[bin]]
+name = "fort77"
+path = "src/bin/fort77.rs"
+
+[[bin]]
+name = "lex"
+path = "src/bin/lex.rs"
+
+[[bin]]
+name = "yacc"
+path = "src/bin/yacc.rs"
+
+[[bin]]
+name = "ar"
+path = "src/bin/ar.rs"
+
+[[bin]]
+name = "ipcrm"
+path = "src/bin/ipcrm.rs"
+
+[[bin]]
+name = "ipcs"
+path = "src/bin/ipcs.rs"
+
+[[bin]]
+name = "strip"
+path = "src/bin/strip.rs"
+
+[[bin]]
+name = "nm"
+path = "src/bin/nm.rs"
