@@ -22,7 +22,7 @@ cargo run --release
 ## Architecture
 
 ### Kernel (`kernel/`)
-- `#![no_std]` + `buddy-alloc` crate for physical memory
+- `#![no_std]` + `buddy-alloc` crate; `kalloc.rs` declares `#[global_allocator]` for the entire binary
 - Entry: `src/main.rs` → `src/lib.rs:kmain()`
 - `src/abi.rs` — types shared with userspace (Stat, Timespec, Termios, Errno, Syscall enum, constants)
 - `src/fs.rs` — Inode table (NINODE=50 slots), DiskInode, Path, Directory, log-based journaling
@@ -33,7 +33,7 @@ cargo run --release
 - `src/console.rs` — Console, line editor, raw mode, termios storage
 
 ### User (`user/`)
-- `lib.rs` — `pub use kernel::abi::*`; `no_std` + `user` macro for syscall wrappers
+- `lib.rs` — `pub use kernel::abi::*`; `#![no_std]` + `#![feature(alloc)]` + `extern crate alloc`; shares kernel's `#[global_allocator]` (buddy-alloc)
 - `bin/` — user programs (init, sh, cat, ls, etc.)
 - `testbin/` — underscore-prefixed tests (registered in `testbin/testrunner.rs:TESTS`)
 - Syscall wrappers in `src/syscall.rs`: `raw::*` (raw syscall numbers) and safe wrappers
@@ -60,6 +60,27 @@ cargo run --release
 
 ### Lock Ordering
 SpinLock (meta) → SleepLock (inner). Never acquire SleepLock while holding SpinLock except in `put()` when ref==1 guarantees no contention.
+
+### Memory Model
+xv8 is a **static binary** (kernel + user statically linked into one ELF). There is exactly **one `#[global_allocator]`** in the final binary, provided by `kernel/src/kalloc.rs` (using `buddy-alloc`).
+
+User space (`#![no_std]` + `#![feature(alloc)]` + `extern crate alloc`) does **not** declare its own `#[global_allocator]`. All allocation requests (`Vec`, `String`, `Box`, etc.) flow through the kernel's `buddy-alloc`.
+
+The path is: `alloc crate → GlobalAlloc::alloc() → buddy-alloc → sbrk(12) / mmap(34) syscall → kernel`.
+
+`user/src/args.rs` provides `Args::from_stack()` which reads argc/argv from the stack. This can be converted to `Vec<String>` using `alloc::vec![String]` once `alloc` is available.
+
+### libposix Dual Target
+`os/posix/libposix/` is designed to compile for both Mac (`#[cfg(unix)]`) and xv8 (`#[cfg(target_os = "none")`):
+
+| Layer | Mac | xv8 |
+|-------|-----|-----|
+| Base | `std` | `no_std` + `alloc` |
+| I/O | `std::io` + `libc` | `ecall` inline asm |
+| Args | `std::env::args()` | `Args::from_stack()` → `Vec<String>` |
+| Exit | `std::process::exit()` | `sys_exit` (ecall) |
+
+`libposix/io.rs` uses `#[cfg(unix)]` / `#[cfg(target_os = "none")]` cfg gates to provide the same public API (`File`, `Read`, `Write`, `print`, `println`, `exit`, `args`, etc.) on both platforms.
 
 ### Log/Journal
 - `log::write(&buf)` instead of `BCACHE::write()`; `log::commit()` on `Operation::drop` when outstanding==0

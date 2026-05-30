@@ -521,3 +521,4 @@ bench = false
 
 [dependencies]
 kernel = { package = "xv8", path = "../kernel", version = "0.1.0" }
+libposix = { path = "../../posix/libposix" }
